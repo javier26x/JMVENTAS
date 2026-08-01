@@ -1,0 +1,96 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tierNum", "order": "ASCENDING" },
+        { "fieldPath": "puntaje", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "canal", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requiereAte", "order": "ASCENDING" },
+        { "fieldPath": "tierNum", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "region", "order": "ASCENDING" },
+        { "fieldPath": "tierNum", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "comuna", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estadoCrm", "order": "ASCENDING" },
+        { "fieldPath": "tierNum", "order": "ASCENDING" },
+        { "fieldPath": "puntaje", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rutSostenedor", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "redes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requiereAte", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cuentas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "prioridad", "order": "ASCENDING" },
+        { "fieldPath": "matBasica", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cuentas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tieneContacto", "order": "ASCENDING" },
+        { "fieldPath": "prioridad", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "actividad",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rbd", "order": "ASCENDING" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

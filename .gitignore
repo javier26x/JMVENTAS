@@ -2,3 +2,19 @@ __pycache__/
 *.pyc
 raw/
 out/
+
+# Credenciales de servicio: dan acceso total al proyecto, saltándose
+# las reglas de Firestore. Nunca al repositorio.
+serviceAccount.json
+firebase/serviceAccount.json
+*-firebase-adminsdk-*.json
+.env
+.env.local
+
+node_modules/
+package-lock.json
+
+# Derivado de datos/*.csv — se regenera con: python3 firebase/transformar.py
+firebase/data/
+.firebase/
+firebase-debug.log

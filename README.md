@@ -12,7 +12,54 @@ datos/contactos-verificados.csv                     24 cuentas de cabecera, 14 c
 scripts/build-prospectos.sh                         Regenera la base desde el directorio oficial MINEDUC
 scripts/analizar-base.py                            Reproduce los cortes que sostienen la estrategia
 scripts/enriquecer-contactos.py                     Busca sitio, correo y teléfono de cada colegio
+firebase/                                           Carga de todo esto en Firestore (ver abajo)
 ```
+
+## Cargar todo en Firebase
+
+Proyecto `jmventas-aab3c`. Son **8.158 documentos** en cuatro colecciones:
+
+| Colección | Docs | ID del documento | Qué contiene |
+|---|---:|---|---|
+| `prospectos` | 7.808 | el RBD | Un establecimiento con básica regular, con tier, puntaje, canal y estado CRM |
+| `redes` | 325 | slug del RUT | Sostenedores con 3+ establecimientos: 1 reunión = N colegios |
+| `cuentas` | 24 | slug del nombre | Las cuentas de cabecera con correo y teléfono |
+| `meta` | 1 | `carga` | Fuente, fecha de corte y totales |
+
+### Paso 1 — crear la base (una sola vez, manual)
+
+Firestore todavía no está aprovisionado en el proyecto. Ábrelo y dale a **Crear base de datos**:
+
+    https://console.firebase.google.com/project/jmventas-aab3c/firestore
+
+Modo de producción, región **southamerica-west1** (Santiago — la latencia importa si el equipo comercial va a usar esto a diario).
+
+### Paso 2 — cargar
+
+```bash
+cd firebase
+npm install
+python3 transformar.py        # CSV -> NDJSON tipado, revisa antes de escribir
+node cargar.mjs --dry-run     # muestra qué se escribiría, sin tocar la nube
+node cargar.mjs --admin       # carga real
+node verificar.mjs --admin    # cuenta lo que quedó y muestra el top
+```
+
+`--admin` necesita un service account: en la consola, **Configuración → Cuentas de servicio → Generar nueva clave privada**, y guárdalo como `firebase/serviceAccount.json`. Está en `.gitignore` — esa clave da acceso total al proyecto saltándose las reglas, así que nunca va al repo.
+
+**Sin service account** puedes cargar con el SDK web (`node cargar.mjs`), pero entonces las reglas tienen que permitir escritura: aplica el bloque "modo carga" de `firebase/firestore.rules`, carga, y vuelve a dejar las de producción. Mientras ese modo esté activo cualquiera con la apiKey —que es pública— puede escribir y borrar. Prefiere `--admin`.
+
+La carga es idempotente: escribe con `merge` y el ID es el RBD, así que se puede repetir sin duplicar. Son ~8.200 escrituras, dentro de las 20.000/día del plan Spark.
+
+### Paso 3 — reglas e índices
+
+```bash
+npx firebase-tools deploy --only firestore:rules,firestore:indexes --project jmventas-aab3c
+```
+
+Las reglas de producción exigen usuario autenticado y sólo dejan editar los campos de gestión (`estadoCrm`, `email`, `telefono`, `contacto`, `notas`…). El resto viene del directorio MINEDUC y se reescribe en cada carga: editarlo a mano sólo genera divergencia.
+
+Sobre la apiKey del `firebaseConfig`: es pública por diseño, viaja en el bundle de cualquier app web de Firebase. Lo que protege los datos son las reglas, no ocultar la clave.
 
 ## Empezar
 

@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// ============================================================
+// JUMP Math Chile - Reglas de Firestore
+//
+// Esta es la version de PRODUCCION: nadie escribe sin estar
+// autenticado, y nadie lee sin estar autenticado.
+//
+// La apiKey del proyecto es publica por diseno (va en el bundle del
+// navegador). Lo que realmente protege la base son estas reglas.
+// Una base con escritura abierta es una base que cualquiera puede
+// borrar, y aca hay 8.158 documentos de trabajo comercial.
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Solo usuarios autenticados del equipo comercial.
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    // Campos que el equipo puede editar desde el CRM. El resto de la
+    // base viene del directorio MINEDUC y se reescribe en cada carga,
+    // asi que editarlo a mano solo genera divergencia.
+    function soloCamposCrm() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['estadoCrm', 'email', 'telefono', 'web', 'contacto',
+                  'notas', 'proximoPaso', 'responsable', 'actualizado']);
+    }
+
+    match /prospectos/{rbd} {
+      allow read: if autenticado();
+      allow update: if autenticado() && soloCamposCrm();
+      allow create, delete: if false;   // la carga masiva usa el Admin SDK
+    }
+
+    match /redes/{rut} {
+      allow read: if autenticado();
+      allow update: if autenticado() && soloCamposCrm();
+      allow create, delete: if false;
+    }
+
+    match /cuentas/{cuenta} {
+      allow read: if autenticado();
+      allow update: if autenticado() && soloCamposCrm();
+      allow create, delete: if false;
+    }
+
+    match /meta/{doc} {
+      allow read: if autenticado();
+      allow write: if false;
+    }
+
+    // Bitacora de gestion comercial: cada usuario escribe sus propias
+    // interacciones y no puede alterar las de otros.
+    match /actividad/{id} {
+      allow read: if autenticado();
+      allow create: if autenticado() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if autenticado() && resource.data.uid == request.auth.uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ============================================================
+// MODO CARGA - temporal, solo si NO usas el Admin SDK
+//
+// Si vas a cargar con `node firebase/cargar.mjs` (SDK web), las reglas
+// de arriba bloquean la escritura. Reemplaza el bloque `service` por
+// este, corre la carga, y vuelve a dejar el de arriba.
+//
+// Deja esto puesto el menor tiempo posible: mientras este activo,
+// cualquiera con la apiKey (que es publica) puede escribir y borrar.
+//
+// La alternativa sin ventana de riesgo es:
+//   node firebase/cargar.mjs --admin
+//
+// service cloud.firestore {
+//   match /databases/{database}/documents {
+//     match /{document=**} {
+//       allow read, write: if request.time < timestamp.date(2026, 8, 3);
+//     }
+//   }
+// }
+// ============================================================
