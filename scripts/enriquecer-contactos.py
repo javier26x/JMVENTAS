@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+# ============================================================
+# JUMP Math Chile - Enriquecimiento de contactos institucionales
+#
+# Toma prospectos_jumpmath.csv, busca el sitio web de cada colegio,
+# entra a la home y a las rutas tipicas de contacto, y extrae
+# correos y telefonos publicos.
+#
+# Resumible: se puede cortar y relanzar, no repite lo ya resuelto.
+#
+#   pip install --break-system-packages requests beautifulsoup4 pandas
+#   python3 enriquecer-contactos.py --tier "1 · FACIL" --limite 400
+#
+# Modos utiles:
+#   --canal "A · Directo Privado"   solo particular pagado (sin ATE, cierre rapido)
+#   --por-sostenedor                un registro por RUT, no por colegio (venta de red)
+#   --dry-run                       muestra a quien consultaria y sale
+# ============================================================
+import argparse, os, re, sys, time, random
+from urllib.parse import urlparse, urljoin, parse_qs, unquote
+
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+
+CSV_DEFECTO = os.path.expanduser('~/jumpmath/out/prospectos_jumpmath.csv')
+UA = ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/124 Safari/537.36')
+HDRS = {'User-Agent': UA, 'Accept-Language': 'es-CL,es;q=0.9'}
+PAUSA = (2.5, 5.0)          # segundos entre requests: se educado, no te bloquean
+
+RE_MAIL = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
+
+# Telefono chileno: +56 2 2345 6789 (fijo Santiago) / +56 9 8765 4321 (movil)
+# / 45 2293800 (fijo regional). Exige prefijo +56, parentesis o separadores
+# reales para no capturar numeros sueltos de 8 digitos (fechas, RBD, precios).
+RE_TEL = re.compile(r"""
+    (?:
+        \+?\s?56[\s.\-]?\(?\d{1,2}\)?[\s.\-]?\d{3,4}[\s.\-]?\d{4}   # con codigo pais
+      | \(\s?\d{2,3}\s?\)[\s.\-]?\d{3,4}[\s.\-]?\d{4}               # (2) 2345 6789
+      | \b(?:fono|tel[eé]fono|tel|celular|m[oó]vil)\s*[:.]?\s*
+        \+?\d[\d\s.\-()]{7,15}\d                                     # precedido de etiqueta
+    )
+""", re.IGNORECASE | re.VERBOSE)
+
+BASURA_MAIL = ('wixpress', 'sentry', 'example.com', 'domain.com', 'godaddy',
+               'squarespace', 'wordpress.org', '.png', '.jpg', '.jpeg', '.webp',
+               '.gif', '.svg', 'no-reply', 'noreply')
+AGREGADORES = ('facebook', 'instagram', 'linkedin', 'youtube', 'twitter', 'x.com',
+               'tiktok', 'mineduc', 'wikipedia', 'yelp', 'paginasamarillas',
+               'amarillas', 'emol', 'duckduckgo', 'google', 'bing', 'mercantil',
+               'dateas', 'micole', 'infoescuelas', 'losmejorescolegios',
+               'colegiosdechile', 'escuelasdechile', 'scribd', 'trabajando',
+               'profejobs', 'rocketreach', 'lusha', 'datanyze')
+
+RUTAS = ('', '/contacto', '/contacto/', '/contactenos', '/contactanos',
+         '/admision', '/admisiones', '/nosotros', '/quienes-somos')
+
+
+def _desenvolver(href: str) -> str:
+    """DuckDuckGo entrega //duckduckgo.com/l/?uddg=<url-encoded>.
+    Sin desenvolverlo, el filtro de agregadores descarta TODOS los
+    resultados y la busqueda devuelve siempre vacio."""
+    if not href:
+        return ''
+    if href.startswith('//'):
+        href = 'https:' + href
+    p = urlparse(href)
+    if 'duckduckgo.com' in p.netloc and p.path.startswith('/l'):
+        destino = parse_qs(p.query).get('uddg', [''])[0]
+        if destino:
+            return unquote(destino)
+    return href
+
+
+def buscar_sitio(consulta: str, sess: requests.Session) -> str:
+    """Primer resultado organico que no sea agregador ni red social."""
+    try:
+        r = sess.post('https://html.duckduckgo.com/html/',
+                      data={'q': consulta}, headers=HDRS, timeout=25)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        # varios selectores: el markup de DDG cambia cada cierto tiempo
+        anclas = (soup.select('a.result__a')
+                  or soup.select('h2 a')
+                  or soup.select('a[href*="uddg="]'))
+        for a in anclas:
+            url = _desenvolver(a.get('href', ''))
+            p = urlparse(url)
+            dom = p.netloc.lower()
+            if not dom or not p.scheme.startswith('http'):
+                continue
+            if any(x in dom for x in AGREGADORES):
+                continue
+            return f'{p.scheme}://{dom}'
+    except Exception as e:
+        print(f'   ! busqueda: {e}')
+    return ''
+
+
+def _limpiar_tel(bruto: str) -> str:
+    d = re.sub(r'\D', '', bruto)
+    if d.startswith('56'):
+        d = d[2:]
+    if len(d) == 9 and d[0] == '9':          # movil
+        return f'+56 9 {d[1:5]} {d[5:]}'
+    if len(d) == 9:                          # fijo con codigo de area de 1 digito
+        return f'+56 {d[0]} {d[1:5]} {d[5:]}'
+    if len(d) == 8:                          # fijo sin codigo de area
+        return f'{d[:4]} {d[4:]}'
+    if 9 < len(d) <= 11:
+        return f'+56 {d[-9:-8]} {d[-8:-4]} {d[-4:]}'
+    return ''
+
+
+def raspar(sitio: str, sess: requests.Session):
+    """Home + rutas tipicas de contacto. Devuelve (correos, telefonos)."""
+    mails, tels = set(), set()
+    dominio = urlparse(sitio).netloc.lower().replace('www.', '')
+    for ruta in RUTAS:
+        try:
+            r = sess.get(urljoin(sitio, ruta), headers=HDRS, timeout=25)
+            if r.status_code != 200:
+                continue
+            soup = BeautifulSoup(r.text, 'html.parser')
+
+            # mailto: es la fuente mas confiable
+            for a in soup.select('a[href^="mailto:"]'):
+                m = a['href'][7:].split('?')[0].strip().lower()
+                if m and not any(b in m for b in BASURA_MAIL):
+                    mails.add(m)
+            for m in RE_MAIL.findall(r.text):
+                m = m.lower()
+                if not any(b in m for b in BASURA_MAIL):
+                    mails.add(m)
+
+            texto = soup.get_text(' ')
+            for a in soup.select('a[href^="tel:"]'):
+                t = _limpiar_tel(a['href'][4:])
+                if t:
+                    tels.add(t)
+            for t in RE_TEL.findall(texto):
+                t = _limpiar_tel(t)
+                if t:
+                    tels.add(t)
+        except Exception:
+            pass
+        time.sleep(random.uniform(*PAUSA))
+        if mails and tels:
+            break
+
+    # prioriza correos del dominio propio del colegio sobre gmail/hotmail
+    propios = sorted(m for m in mails if dominio and dominio in m.split('@')[-1])
+    otros = sorted(m for m in mails if m not in propios)
+    return (propios + otros)[:3], sorted(tels)[:2]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--csv', default=CSV_DEFECTO)
+    ap.add_argument('--tier', default='1 · FACIL')
+    ap.add_argument('--canal', default=None, help='filtra por CANAL exacto')
+    ap.add_argument('--limite', type=int, default=200)
+    ap.add_argument('--por-sostenedor', action='store_true',
+                    help='un registro por RUT de sostenedor (venta de red)')
+    ap.add_argument('--dry-run', action='store_true')
+    a = ap.parse_args()
+
+    if not os.path.exists(a.csv):
+        sys.exit(f'No existe {a.csv}. Corre primero build-prospectos.sh')
+
+    df = pd.read_csv(a.csv, dtype=str, encoding='utf-8-sig').fillna('')
+    for col in ('EMAIL', 'TELEFONO', 'WEB', 'CONTACTO', 'ESTADO_CRM'):
+        if col not in df.columns:
+            df[col] = ''
+
+    sel = df.TIER == a.tier
+    if a.canal:
+        sel &= df.CANAL == a.canal
+    obj = df[sel & (df.EMAIL == '')]
+
+    if a.por_sostenedor:
+        # un colegio representante por red: el de mayor matricula
+        obj = obj.assign(_m=pd.to_numeric(obj.MAT_BASICA, errors='coerce').fillna(0)) \
+                 .sort_values('_m', ascending=False) \
+                 .drop_duplicates(subset=['RUT_SOSTENEDOR'])
+    obj = obj.head(a.limite)
+
+    print(f'Objetivo: {len(obj)} registros | tier={a.tier} '
+          f'canal={a.canal or "todos"} por_sostenedor={a.por_sostenedor}\n')
+    if a.dry_run:
+        print(obj[['RBD', 'ESTABLECIMIENTO', 'COMUNA', 'MAT_BASICA']].to_string(index=False))
+        return
+
+    sess = requests.Session()
+    ok = 0
+    for n, (idx, row) in enumerate(obj.iterrows(), 1):
+        print(f'[{n}/{len(obj)}] {row.ESTABLECIMIENTO} ({row.COMUNA})')
+        sitio = row.WEB or buscar_sitio(
+            row.BUSQUEDA_WEB or f'{row.ESTABLECIMIENTO} {row.COMUNA} colegio Chile sitio oficial',
+            sess)
+        if not sitio:
+            df.at[idx, 'ESTADO_CRM'] = 'sin_web'
+            print('    sin sitio identificable')
+            time.sleep(random.uniform(*PAUSA))
+            continue
+
+        mails, tels = raspar(sitio, sess)
+        df.at[idx, 'WEB'] = sitio
+        df.at[idx, 'EMAIL'] = '; '.join(mails)
+        df.at[idx, 'TELEFONO'] = '; '.join(tels)
+        df.at[idx, 'ESTADO_CRM'] = 'contacto_ok' if mails else 'web_sin_mail'
+        ok += bool(mails)
+        print(f'    {sitio} -> {mails or "-"} | {tels or "-"}')
+
+        if n % 10 == 0:
+            df.to_csv(a.csv, index=False, encoding='utf-8-sig')
+            print(f'    [guardado parcial: {ok}/{n} con correo]')
+        time.sleep(random.uniform(*PAUSA))
+
+    df.to_csv(a.csv, index=False, encoding='utf-8-sig')
+    con_mail = (df.EMAIL != '').sum()
+    print(f'\nListo. Esta corrida: {ok}/{len(obj)} con correo.')
+    print(f'Base completa: {con_mail} de {len(df)} con correo.')
+
+
+if __name__ == '__main__':
+    main()
