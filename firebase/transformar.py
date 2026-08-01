@@ -52,6 +52,28 @@ def tier_num(t):
     return int(m.group(1)) if m else None
 
 
+# Palabras de relleno: aparecen en miles de nombres y no discriminan nada.
+VACIAS = {'colegio', 'escuela', 'liceo', 'centro', 'educacional', 'particular',
+          'basica', 'del', 'las', 'los', 'san', 'santa', 'the', 'para', 'con'}
+
+
+def tokenizar(*textos):
+    """Palabras normalizadas para buscar con array-contains.
+
+    Firestore no hace busqueda de texto libre: el prefijo con >= solo
+    matchea desde el inicio del nombre, asi que buscar "george" en
+    "Colegio Saint George's" nunca daria resultado. Un arreglo de
+    palabras si permite encontrarlo desde el servidor.
+    """
+    vistos = []
+    for t in textos:
+        limpio = unicodedata.normalize('NFKD', str(t)).encode('ascii', 'ignore').decode()
+        for p in re.split(r'[^a-zA-Z0-9]+', limpio.lower()):
+            if len(p) >= 3 and p not in VACIAS and p not in vistos:
+                vistos.append(p)
+    return vistos[:25]
+
+
 def escribir(nombre, filas):
     """Escritura atomica: tmp + rename.
 
@@ -105,8 +127,11 @@ def cargar_prospectos():
                 '_id': str(rbd),
                 'rbd': rbd,
                 'establecimiento': nombre,
-                # normalizado sin tildes para busqueda por prefijo en Firestore
+                # normalizado sin tildes para ordenar y mostrar
                 'busqueda': slug(nombre, 200).replace('-', ' '),
+                # palabras sueltas: es lo unico que permite buscar "george"
+                # dentro de "Colegio Saint George's" desde el servidor
+                'tokens': tokenizar(nombre, r['COMUNA']),
                 'tier': r['TIER'].strip(),
                 'tierNum': tier_num(r['TIER']),
                 'puntaje': num(r['PUNTAJE']),

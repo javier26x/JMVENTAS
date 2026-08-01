@@ -13,6 +13,7 @@ scripts/build-prospectos.sh                         Regenera la base desde el di
 scripts/analizar-base.py                            Reproduce los cortes que sostienen la estrategia
 scripts/enriquecer-contactos.py                     Busca sitio, correo y teléfono de cada colegio
 firebase/                                           Carga de todo esto en Firestore (ver abajo)
+web/                                                CRM web sobre Firebase Hosting
 ```
 
 ## Cargar todo en Firebase
@@ -54,12 +55,46 @@ La carga es idempotente: escribe con `merge` y el ID es el RBD, así que se pued
 ### Paso 3 — reglas e índices
 
 ```bash
+cd ~/JMVENTAS
 npx firebase-tools deploy --only firestore:rules,firestore:indexes --project jmventas-aab3c
 ```
 
 Las reglas de producción exigen usuario autenticado y sólo dejan editar los campos de gestión (`estadoCrm`, `email`, `telefono`, `contacto`, `notas`…). El resto viene del directorio MINEDUC y se reescribe en cada carga: editarlo a mano sólo genera divergencia.
 
 Sobre la apiKey del `firebaseConfig`: es pública por diseño, viaja en el bundle de cualquier app web de Firebase. Lo que protege los datos son las reglas, no ocultar la clave.
+
+### Paso 4 — la app web
+
+CRM para el equipo comercial: KPIs, filtros y tabla sobre las tres colecciones, con edición del estado de cada cuenta.
+
+**Antes de desplegar**, habilita el proveedor de Google — las reglas exigen usuario autenticado y sin esto nadie entra:
+
+Firebase Console → **Authentication → Sign-in method → Google → Habilitar**
+
+```bash
+cd ~/JMVENTAS
+npx firebase-tools deploy --only hosting --project jmventas-aab3c
+```
+
+Queda en `https://jmventas-aab3c.web.app`.
+
+Qué trae:
+
+| | |
+|---|---|
+| **Cuentas** | Las 24 de cabecera, ordenadas por prioridad, con correo y teléfono clicables |
+| **Redes** | Los 325 sostenedores con 3+ colegios, por matrícula |
+| **Prospectos** | Los 7.808, paginados de a 300 desde el servidor |
+| **Buscador** | Por palabra suelta (`tokens`), así "george" encuentra "Colegio Saint George's" |
+| **Filtros** | Tier, canal, región, requisito ATE y estado, en una sola fila |
+| **Estado** | Editable en línea; escribe a Firestore al instante |
+
+Detalles que importan para el uso diario:
+
+- **El filtro más selectivo se resuelve en el servidor y el resto en el cliente.** Firestore necesita un índice por cada combinación de filtros; en vez de declarar esa explosión, la app manda uno solo y afina sobre la página traída. Por eso el contador dice "N de M revisados": M es lo que se bajó, no la base entera. "Cargar más" trae la siguiente página.
+- **Los tiers usan una rampa ordinal de un solo hue** (más difícil = más oscuro), validada en claro y oscuro. El requisito ATE va con icono y texto, nunca color solo.
+- **Sólo se pueden editar los campos de gestión.** Si intentas cambiar otra cosa, las reglas lo rechazan y la app revierte el control.
+- Si una consulta necesita un índice que falta, Firestore devuelve el enlace para crearlo y la app lo muestra clicable.
 
 ## Empezar
 

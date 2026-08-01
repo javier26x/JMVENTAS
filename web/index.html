@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JUMP Math Chile · Prospección comercial</title>
+<meta name="description" content="CRM de prospección: 7.808 establecimientos con básica regular, priorizados por facilidad de cierre.">
+<link rel="stylesheet" href="estilos.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📐</text></svg>">
+</head>
+<body>
+
+<header class="barra">
+  <div class="marca">JUMP Math Chile <span>· prospección</span></div>
+  <div class="empuje"></div>
+  <div id="usuario" class="usuario oculto">
+    <img id="avatar" alt="">
+    <span id="correo"></span>
+    <button class="fantasma" id="salir">Salir</button>
+  </div>
+</header>
+
+<!-- Pantalla de acceso: las reglas exigen usuario autenticado -->
+<section id="acceso" class="acceso">
+  <h1>Prospección comercial</h1>
+  <p>
+    7.808 establecimientos con educación básica regular, priorizados por
+    facilidad de cierre. Entra con tu cuenta de Google para ver la base.
+  </p>
+  <div><button class="primario" id="entrar">Entrar con Google</button></div>
+  <p id="acceso-error" class="oculto" style="color:var(--critico)"></p>
+</section>
+
+<main id="app" class="oculto">
+
+  <!-- Cifras de cabecera: fila de stat tiles, no un gráfico -->
+  <section class="kpis" id="kpis"></section>
+
+  <!-- Una sola fila de filtros, sobre todo lo que afecta -->
+  <section class="filtros">
+    <div class="pestanas" id="pestanas" role="tablist">
+      <button role="tab" data-vista="cuentas" aria-selected="true">Cuentas</button>
+      <button role="tab" data-vista="redes" aria-selected="false">Redes</button>
+      <button role="tab" data-vista="prospectos" aria-selected="false">Prospectos</button>
+    </div>
+
+    <input type="search" id="buscar" placeholder="Buscar colegio o comuna…" autocomplete="off">
+    <select id="f-tier">
+      <option value="">Todos los tiers</option>
+      <option value="1">1 · Fácil</option>
+      <option value="2">2 · Medio</option>
+      <option value="3">3 · Difícil</option>
+    </select>
+    <select id="f-canal"><option value="">Todos los canales</option></select>
+    <select id="f-region"><option value="">Todas las regiones</option></select>
+    <select id="f-ate">
+      <option value="">ATE: indiferente</option>
+      <option value="no">Sin requisito ATE</option>
+      <option value="si">Requiere ATE</option>
+    </select>
+    <select id="f-estado">
+      <option value="">Todos los estados</option>
+      <option value="nuevo">Nuevo</option>
+      <option value="contactado">Contactado</option>
+      <option value="reunion">Reunión agendada</option>
+      <option value="propuesta">Propuesta enviada</option>
+      <option value="ganado">Ganado</option>
+      <option value="descartado">Descartado</option>
+    </select>
+    <span class="resultado" id="resultado"></span>
+  </section>
+
+  <div id="error" class="error oculto"></div>
+
+  <div class="envoltura">
+    <table>
+      <thead><tr id="cabecera"></tr></thead>
+      <tbody id="cuerpo"></tbody>
+    </table>
+    <div id="cargando" class="cargando">Cargando…</div>
+    <div id="vacio" class="vacio oculto">Sin resultados para estos filtros.</div>
+  </div>
+
+  <div class="pie">
+    <button id="mas" class="oculto">Cargar más</button>
+  </div>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
