@@ -47,17 +47,34 @@ async function leerNdjson(archivo) {
   if (!fs.existsSync(ruta)) {
     throw new Error(`Falta ${ruta}. Corre primero: python3 firebase/transformar.py`);
   }
+  const corrupto = (detalle) => new Error(
+    `${archivo} está incompleto o corrupto (${detalle}).\n`
+    + '  Suele pasar si el disco se llenó a media escritura.\n'
+    + '  Libera espacio y regenera:  python3 firebase/transformar.py');
+
   if (archivo.endsWith('.json')) {
-    return [JSON.parse(fs.readFileSync(ruta, 'utf8'))];
+    try {
+      return [JSON.parse(fs.readFileSync(ruta, 'utf8'))];
+    } catch (e) {
+      throw corrupto(e.message);
+    }
   }
+
   const docs = [];
   const rl = readline.createInterface({
     input: fs.createReadStream(ruta, 'utf8'),
     crlfDelay: Infinity,
   });
+  let n = 0;
   for await (const linea of rl) {
+    n += 1;
     const l = linea.trim();
-    if (l) docs.push(JSON.parse(l));
+    if (!l) continue;
+    try {
+      docs.push(JSON.parse(l));
+    } catch (e) {
+      throw corrupto(`línea ${n}: ${e.message}`);
+    }
   }
   return docs;
 }

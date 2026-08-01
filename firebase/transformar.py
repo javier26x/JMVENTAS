@@ -12,6 +12,7 @@
 #      firebase/data/meta.json
 # ============================================================
 import csv
+import errno
 import json
 import os
 import re
@@ -52,12 +53,41 @@ def tier_num(t):
 
 
 def escribir(nombre, filas):
+    """Escritura atomica: tmp + rename.
+
+    Si el disco se llena a media escritura, un `open(w)` directo deja un
+    archivo truncado que el cargador lee como JSON invalido varios pasos
+    despues. Con tmp + rename el destino solo existe si quedo completo.
+    """
     ruta = os.path.join(SALIDA, nombre)
-    with open(ruta, 'w', encoding='utf-8') as f:
-        for r in filas:
-            f.write(json.dumps(r, ensure_ascii=False) + '\n')
+    tmp = ruta + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            for r in filas:
+                f.write(json.dumps(r, ensure_ascii=False) + '\n')
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, ruta)
+    except OSError as e:
+        for basura in (tmp, ruta):
+            try:
+                os.remove(basura)
+            except OSError:
+                pass
+        if e.errno == errno.ENOSPC:
+            raise SystemExit(
+                f'\nSin espacio en disco al escribir {nombre}.\n'
+                f'  Los NDJSON completos ocupan ~5 MB en {SALIDA}\n'
+                '  Libera espacio y vuelve a correr. En Cloud Shell suele bastar:\n'
+                '    npm cache clean --force && rm -rf ~/.npm/_cacache\n'
+                '    du -sh ~/* ~/.[!.]* 2>/dev/null | sort -h | tail -15') from e
+        raise
     print(f'  {nombre}: {len(filas)} documentos')
     return len(filas)
+
+
+def escribir_json(nombre, obj):
+    escribir(nombre, [obj])
 
 
 def cargar_prospectos():
@@ -210,8 +240,7 @@ def main():
                         'regimen el 1-ene-2026 absorbieron DAEM que aqui aun figuran '
                         'como municipales. Verificar en dep.gob.cl antes de contactar.'),
     }
-    with open(os.path.join(SALIDA, 'meta.json'), 'w', encoding='utf-8') as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+    escribir_json('meta.json', meta)
 
     print(f"\n  Total: {n_p + n_r + n_c + 1} documentos a escribir")
     print(f"  Matricula basica cubierta: {meta['matBasicaTotal']:,}")
