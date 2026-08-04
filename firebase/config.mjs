@@ -23,9 +23,14 @@ export const CONSOLA_FIRESTORE =
  * conexión en silencio y el proceso queda colgado indefinidamente. Una
  * llamada REST previa convierte esa espera en un error accionable.
  *
- * @param {{admin?: boolean}} opts
+ * Detecta UN solo problema: que la base no exista. Nada más puede
+ * concluirse desde acá — la sonda va sin autenticar, así que en cuanto
+ * las reglas están puestas responde 403 aunque la carga vaya a funcionar
+ * perfectamente (con --admin las reglas ni se aplican, y sin él el SDK
+ * autentica al usuario). Tratar ese 403 como fatal bloqueaba cargas
+ * válidas.
  */
-export async function comprobarFirestore({ admin = false } = {}) {
+export async function comprobarFirestore() {
   const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}`
     + `/databases/(default)/documents/_preflight?pageSize=1&key=${firebaseConfig.apiKey}`;
 
@@ -44,15 +49,13 @@ export async function comprobarFirestore({ admin = false } = {}) {
   if (razon === 'SERVICE_DISABLED' || /has not been used in project/i.test(mensaje)) {
     throw new Error(
       'Firestore no está creado todavía en este proyecto.\n\n'
-      + '  Ábrelo una vez en la consola y elige "Crear base de datos":\n'
-      + `    ${CONSOLA_FIRESTORE}\n\n`
-      + '  Modo de producción y región southamerica-west1 (Santiago).\n'
+      + '  Créalo con:\n'
+      + '    gcloud firestore databases create --location=southamerica-west1 '
+      + '--type=firestore-native\n\n'
+      + `  O en la consola:  ${CONSOLA_FIRESTORE}\n`
       + '  Después vuelve a correr este comando.');
   }
-  if (r.status === 403 && !admin) {
-    console.warn('  Aviso: la API responde 403. Si es por reglas, usa --admin '
-      + 'o aplica el modo carga de firestore.rules.\n');
-    return;
-  }
-  throw new Error(mensaje);
+
+  // Todo lo demás es ruido de la sonda anónima, no un diagnóstico de la
+  // carga: seguir y dejar que falle el SDK, que sí está autenticado.
 }

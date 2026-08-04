@@ -199,7 +199,7 @@ async function main() {
     return;
   }
 
-  await comprobarFirestore({ admin: ADMIN });
+  await comprobarFirestore();
 
   const be = ADMIN ? await backendAdmin() : await backendWeb();
   console.log(`Backend: ${be.etiqueta}\n`);
@@ -216,10 +216,19 @@ async function main() {
 
 main().catch((e) => {
   console.error(`\nError: ${e.message}`);
-  if (/permission|PERMISSION_DENIED/i.test(e.message)) {
-    console.error('\nLas reglas están bloqueando la escritura. Opciones:');
-    console.error('  1) node firebase/cargar.mjs --admin   (con serviceAccount.json)');
-    console.error('  2) aplicar el "modo carga" de firebase/firestore.rules');
+  if (/permission|PERMISSION_DENIED|insufficient/i.test(e.message)) {
+    if (ADMIN) {
+      // Con Admin SDK las reglas no se evalúan: si falla, son credenciales.
+      console.error('\nCon --admin las reglas no aplican, así que esto es de credenciales.');
+      console.error('  En Cloud Shell / máquina con gcloud:');
+      console.error('    gcloud auth application-default login');
+      console.error('  O baja una clave de servicio y déjala en firebase/serviceAccount.json:');
+      console.error('    Consola → Configuración del proyecto → Cuentas de servicio');
+    } else {
+      console.error('\nLas reglas están bloqueando la escritura. Opciones:');
+      console.error('  1) node firebase/cargar.mjs --admin   (recomendado)');
+      console.error('  2) aplicar el "modo carga" de firebase/firestore.rules');
+    }
   }
   process.exit(1);
 });

@@ -52,7 +52,7 @@ async function conWeb() {
 }
 
 const main = async () => {
-  await comprobarFirestore({ admin: ADMIN });
+  await comprobarFirestore();
   const api = ADMIN ? await conAdmin() : await conWeb();
   console.log(`Proyecto: ${firebaseConfig.projectId}\n`);
 
