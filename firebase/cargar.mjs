@@ -210,7 +210,9 @@ async function main() {
 
   const seg = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`\nListo: ${escritos} documentos en ${seg}s.`);
-  console.log('Si cargaste con el SDK web, vuelve a dejar firestore.rules en modo producción.');
+  if (!ADMIN) {
+    console.log('Cargaste con el SDK web: vuelve a dejar firestore.rules en modo producción.');
+  }
   process.exit(0);
 }
 

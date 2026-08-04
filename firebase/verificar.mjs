@@ -29,8 +29,10 @@ async function conAdmin() {
   const db = getFirestore();
   return {
     contar: async (c) => (await db.collection(c).count().get()).data().count,
-    top: async (c, campo, n) => {
-      const s = await db.collection(c).orderBy(campo, 'desc').limit(n).get();
+    top: async (c, campo, n, filtro) => {
+      let q = db.collection(c);
+      if (filtro) q = q.where(filtro[0], '==', filtro[1]);
+      const s = await q.orderBy(campo, 'desc').limit(n).get();
       return s.docs.map((d) => d.data());
     },
   };
@@ -39,13 +41,16 @@ async function conAdmin() {
 async function conWeb() {
   const { initializeApp } = await import('firebase/app');
   const {
-    getFirestore, collection, getCountFromServer, query, orderBy, limit, getDocs,
+    getFirestore, collection, getCountFromServer, query, where, orderBy, limit, getDocs,
   } = await import('firebase/firestore');
   const db = getFirestore(initializeApp(firebaseConfig));
   return {
     contar: async (c) => (await getCountFromServer(collection(db, c))).data().count,
-    top: async (c, campo, n) => {
-      const s = await getDocs(query(collection(db, c), orderBy(campo, 'desc'), limit(n)));
+    top: async (c, campo, n, filtro) => {
+      const partes = [collection(db, c)];
+      if (filtro) partes.push(where(filtro[0], '==', filtro[1]));
+      partes.push(orderBy(campo, 'desc'), limit(n));
+      const s = await getDocs(query(...partes));
       return s.docs.map((d) => d.data());
     },
   };
@@ -71,7 +76,7 @@ const main = async () => {
   }
 
   console.log('\nTop 5 prospectos Tier 1 por matrícula:');
-  for (const p of await api.top('prospectos', 'matBasica', 5)) {
+  for (const p of await api.top('prospectos', 'matBasica', 5, ['tierNum', 1])) {
     console.log(`  ${String(p.matBasica).padStart(6)}  ${p.establecimiento.slice(0, 44).padEnd(46)} ${p.comuna}`);
   }
 
