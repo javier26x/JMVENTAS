@@ -177,12 +177,19 @@ def ultimo(valor):
 # nombre está en los .ttl que acompañan a los datos, así que el
 # diccionario se lee de ahí en vez de suponer qué número es matemática.
 RE_SUJETO = re.compile(r'<([^>]*/def/(\w+)/(\d+))>')
+RE_SUJETO_NUEVO = re.compile(r'^<[^>]+>')
 RE_ETIQUETA = re.compile(r'(?:rdfs:label|skos:prefLabel|:label|'
                          r'<[^>]*(?:label|prefLabel)>)\s+"([^"]+)"')
 
 
 def mapa_codigos(directorio, dimension='asignatura', limite_mb=40):
-    """{código: etiqueta} leído de los .ttl/.jsonld del paquete."""
+    """{código: etiqueta} leído de los .ttl/.jsonld del paquete.
+
+    Un sujeto Turtle vale hasta que empieza otro o hasta el punto final
+    de la declaración. Arrastrarlo más allá le pega a un código la
+    etiqueta del bloque siguiente: así el código 2 quedó rotulado
+    "Grados", que es el nombre de otra dimensión.
+    """
     mapa = {}
     for raiz, _, archivos in os.walk(directorio):
         for nombre in sorted(archivos):
@@ -197,14 +204,22 @@ def mapa_codigos(directorio, dimension='asignatura', limite_mb=40):
                         leidos += len(linea)
                         if leidos > limite_mb * 1024 * 1024:
                             break            # las definiciones van al inicio
-                        s = RE_SUJETO.search(linea)
-                        if s and s.group(2) == dimension:
-                            sujeto = int(s.group(3))
+
+                        # Sin sangría y abriendo con '<' es un sujeto nuevo:
+                        # el anterior deja de estar vigente, sea cual sea.
+                        if RE_SUJETO_NUEVO.match(linea):
+                            sujeto = None
+                            s = RE_SUJETO.search(linea)
+                            if s and s.group(2) == dimension:
+                                sujeto = int(s.group(3))
+
                         if sujeto is not None:
                             e = RE_ETIQUETA.search(linea)
                             if e:
                                 mapa.setdefault(sujeto, e.group(1).strip())
                                 sujeto = None
+                            elif linea.rstrip().endswith('.'):
+                                sujeto = None      # bloque cerrado sin etiqueta
             except Exception:
                 continue
     return mapa
@@ -494,6 +509,9 @@ def main():
     ap.add_argument('--archivo', action='append', default=[],
                     help='archivo ya descargado (repetible)')
     ap.add_argument('--salida', default=os.path.join(DATOS, 'simce-matematica.csv'))
+    ap.add_argument('--codigo-mate', type=int, action='append', default=[],
+                    help='código de asignatura de matemática, si el '
+                         'diccionario no lo resuelve (ej: --codigo-mate 2)')
     ap.add_argument('--incluir-idps', action='store_true',
                     help='procesa también IDPS (59 MB de indicadores '
                          'socioemocionales, no aportan a matemática)')
@@ -536,16 +554,21 @@ def main():
         print(f'  {len(manifiesto)} archivos dentro, {len(tablas)} tablas legibles'
               + (f', {len(grandes)} en streaming' if grandes else ''))
 
-        codigos_mate = None
-        if grandes:
+        codigos_mate = set(a.codigo_mate) or None
+        if grandes and not codigos_mate:
             mapa = mapa_codigos(os.path.join(CACHE, 'extraido'))
             if mapa:
                 print(f'  diccionario de asignaturas: {mapa}')
-                codigos_mate = {n for n, l in mapa.items()
-                                if 'matem' in ultimo(l)}
-                print(f'  códigos de matemática: {codigos_mate or "ninguno"}')
+                codigos_mate = {n for n, l in mapa.items() if 'matem' in ultimo(l)}
+            if codigos_mate:
+                print(f'  códigos de matemática: {codigos_mate}')
             else:
-                print('  ! no se encontró el diccionario de asignaturas en los .ttl')
+                print('  ! el diccionario no identifica matemática.')
+                print('    Mira las etiquetas de arriba y pásalo a mano:')
+                print('      python3 scripts/cosechar-simce.py --archivo '
+                      '.cache-simce/Resultados_2025.zip --codigo-mate <N>')
+        elif codigos_mate:
+            print(f'  códigos de matemática (indicados a mano): {codigos_mate}')
 
         for g in grandes:
             print(f'  recorriendo {os.path.basename(g)}')
