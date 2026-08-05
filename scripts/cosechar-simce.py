@@ -24,6 +24,8 @@ import csv
 import io
 import os
 import re
+import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -129,45 +131,96 @@ def leer_tabla(buf, nombre):
         return []
 
 
-def contenido_zip(ruta, prefijo=''):
-    """(tablas, manifiesto). Entra a los zip anidados."""
+# El paquete de la Agencia es un zip que contiene .rar. Python no lee
+# rar, así que hace falta una herramienta externa; se prueban varias
+# porque unrar-free falla con RAR5, que es el formato actual.
+DESCOMPRESORES = (
+    ('unar', ['unar', '-q', '-f', '-o']),
+    ('7z', ['7z', 'x', '-y', '-o']),
+    ('7za', ['7za', 'x', '-y', '-o']),
+    ('bsdtar', ['bsdtar', '-xf']),
+    ('unrar', ['unrar', 'x', '-y']),
+    ('unrar-free', ['unrar-free', '-x']),
+)
+
+
+def extraer_rar(ruta, destino):
+    """Devuelve True si alguna herramienta disponible logró extraerlo."""
+    os.makedirs(destino, exist_ok=True)
+    for nombre, base in DESCOMPRESORES:
+        if not shutil.which(nombre):
+            continue
+        if nombre in ('7z', '7za'):
+            cmd = base[:-1] + [f'-o{destino}', ruta]
+        elif nombre == 'unar':
+            cmd = base + [destino, ruta]
+        elif nombre == 'bsdtar':
+            cmd = base + [ruta, '-C', destino]
+        else:
+            cmd = base + [ruta, destino]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=600)
+        except Exception:
+            continue
+        if r.returncode == 0 and any(os.scandir(destino)):
+            print(f'    extraído con {nombre}')
+            return True
+        print(f'    {nombre} no pudo: {r.stderr.decode("utf-8", "ignore").strip()[:120]}')
+    return False
+
+
+def explorar(ruta, prefijo='', omitir=None, nivel=0):
+    """(tablas, manifiesto), entrando a zip y rar anidados."""
     tablas, manifiesto = [], []
-    with zipfile.ZipFile(ruta) as z:
-        for info in z.infolist():
-            if info.is_dir():
-                continue
-            n = info.filename
-            kb = info.file_size // 1024
-            manifiesto.append(f'{prefijo}{n}  ({kb} KB)')
-            bajo = n.lower()
-            if bajo.endswith('.zip'):
-                anid = io.BytesIO(z.read(n))
-                try:
-                    with zipfile.ZipFile(anid) as z2:
-                        for i2 in z2.infolist():
-                            if i2.is_dir():
-                                continue
-                            manifiesto.append(f'{prefijo}  {n}/{i2.filename} '
-                                              f'({i2.file_size // 1024} KB)')
-                            if i2.filename.lower().endswith(TABULARES):
-                                tablas += leer_tabla(io.BytesIO(z2.read(i2.filename)),
-                                                     i2.filename)
-                except Exception as e:
-                    print(f'    ! {n}: {e}')
-            elif bajo.endswith(TABULARES):
-                tablas += leer_tabla(io.BytesIO(z.read(n)), n)
+    bajo = ruta.lower()
+    nombre = os.path.basename(ruta)
+
+    if omitir and omitir.search(nombre):
+        manifiesto.append(f'{prefijo}{nombre}  [omitido]')
+        return tablas, manifiesto
+    if nivel > 4:
+        return tablas, manifiesto
+
+    trabajo = os.path.join(CACHE, 'extraido', re.sub(r'[^A-Za-z0-9._-]', '_', nombre))
+
+    if bajo.endswith('.zip'):
+        os.makedirs(trabajo, exist_ok=True)
+        try:
+            with zipfile.ZipFile(ruta) as z:
+                z.extractall(trabajo)
+        except Exception as e:
+            print(f'    ! {nombre}: {e}')
+            return tablas, manifiesto
+    elif bajo.endswith(('.rar', '.7z')):
+        if not os.path.isdir(trabajo) or not any(os.scandir(trabajo)):
+            print(f'  descomprimiendo {nombre}')
+            if not extraer_rar(ruta, trabajo):
+                manifiesto.append(f'{prefijo}{nombre}  [sin descompresor]')
+                print('\n  Falta una herramienta que lea .rar. Instala una:')
+                print('    sudo apt-get install -y unar          # recomendada: lee RAR5')
+                print('    sudo apt-get install -y p7zip-rar     # alternativa')
+                return tablas, manifiesto
+    elif bajo.endswith(TABULARES):
+        kb = os.path.getsize(ruta) // 1024
+        manifiesto.append(f'{prefijo}{nombre}  ({kb} KB)')
+        with open(ruta, 'rb') as f:
+            return leer_tabla(io.BytesIO(f.read()), nombre), manifiesto
+    else:
+        manifiesto.append(f'{prefijo}{nombre}  [no tabular]')
+        return tablas, manifiesto
+
+    manifiesto.append(f'{prefijo}{nombre}/')
+    for raiz, _, archivos in os.walk(trabajo):
+        for f in sorted(archivos):
+            t, m = explorar(os.path.join(raiz, f), prefijo + '  ', omitir, nivel + 1)
+            tablas += t
+            manifiesto += m
     return tablas, manifiesto
 
 
-def tablas_de(ruta):
+def tablas_de(ruta, omitir=None):
     """Devuelve (DataFrames, manifiesto de lo que había dentro)."""
-    if ruta.lower().endswith('.zip'):
-        return contenido_zip(ruta)
-    if ruta.lower().endswith('.rar'):
-        sys.exit('Archivo .rar: descomprímelo antes.\n'
-                 '  sudo apt-get install -y unrar-free && unrar-free -x <archivo>')
-    with open(ruta, 'rb') as f:
-        return leer_tabla(io.BytesIO(f.read()), ruta), [os.path.basename(ruta)]
+    return explorar(ruta, omitir=omitir)
 
 
 def columna(d, *patrones):
@@ -211,6 +264,9 @@ def main():
     ap.add_argument('--archivo', action='append', default=[],
                     help='archivo ya descargado (repetible)')
     ap.add_argument('--salida', default=os.path.join(DATOS, 'simce-matematica.csv'))
+    ap.add_argument('--incluir-idps', action='store_true',
+                    help='procesa también IDPS (59 MB de indicadores '
+                         'socioemocionales, no aportan a matemática)')
     a = ap.parse_args()
 
     if a.descubrir or (not a.url and not a.archivo):
@@ -244,7 +300,8 @@ def main():
     manifiestos = []
     for ruta in rutas:
         print(f'\nLeyendo {os.path.basename(ruta)}')
-        tablas, manifiesto = tablas_de(ruta)
+        omitir = None if a.incluir_idps else re.compile(r'idps', re.I)
+        tablas, manifiesto = tablas_de(ruta, omitir)
         manifiestos += manifiesto
         print(f'  {len(manifiesto)} archivos dentro, {len(tablas)} tablas legibles')
         for d in tablas:
