@@ -22,6 +22,7 @@
 import argparse
 import csv
 import io
+import json
 import os
 import re
 import shutil
@@ -103,12 +104,57 @@ def bajar(url):
     return destino
 
 
-TABULARES = ('.csv', '.xlsx', '.xls', '.txt', '.tsv', '.dat')
+TABULARES = ('.csv', '.xlsx', '.xls', '.txt', '.tsv', '.dat', '.jsonld', '.json')
+
+
+def _plano(v):
+    """Aplana un valor JSON-LD: {'@value': x}, listas, nodos anidados."""
+    if isinstance(v, dict):
+        return v.get('@value', v.get('@id', ''))
+    if isinstance(v, list):
+        return '; '.join(str(_plano(x)) for x in v[:3])
+    return v
+
+
+def leer_jsonld(buf, nombre):
+    """JSON-LD -> DataFrame, un nodo por fila.
+
+    La Agencia publica el Simce como datos enlazados (RDF), no como
+    planilla. Se aplanan los nodos del @graph y se acortan las claves a
+    su último segmento, que es lo que deja los nombres reconocibles
+    (…/schema#rbd -> rbd).
+    """
+    import pandas as pd
+    try:
+        data = json.load(buf)
+    except Exception as e:
+        print(f'    ! {nombre}: {e}')
+        return []
+    nodos = data.get('@graph') if isinstance(data, dict) else data
+    if nodos is None:
+        nodos = [data] if isinstance(data, dict) else []
+    filas = []
+    for n in nodos:
+        if not isinstance(n, dict):
+            continue
+        fila = {}
+        for k, v in n.items():
+            if k.startswith('@') and k != '@type':
+                continue
+            clave = re.split(r'[/#]', str(k))[-1]
+            fila[clave] = _plano(v)
+        if fila:
+            filas.append(fila)
+    if not filas:
+        return []
+    return [pd.DataFrame(filas).astype(str)]
 
 
 def leer_tabla(buf, nombre):
     """Un DataFrame por hoja/archivo, probando separadores y codificaciones."""
     import pandas as pd
+    if nombre.lower().endswith(('.jsonld', '.json')):
+        return leer_jsonld(buf, nombre)
     try:
         if nombre.lower().endswith(('.xlsx', '.xls')):
             return list(pd.read_excel(buf, sheet_name=None, dtype=str).values())
@@ -313,8 +359,39 @@ def main():
             col_mate = columna(d, r'mate.*4b|4b.*mate', r'prom.*mate', r'matem')
             col_cat = columna(d, r'categor')
             col_anio = columna(d, r'^a[gñn]o|periodo|year')
+
+            # Formato largo: la asignatura es un VALOR, no una columna.
+            # Es la forma en que exporta un data warehouse (una fila por
+            # establecimiento × prueba), y buscar una columna "mate" ahí
+            # no encuentra nada aunque el dato esté.
+            if not col_mate:
+                col_asig = next(
+                    (c for c in d.columns
+                     if d[c].astype(str).str.contains('matem', case=False, na=False).any()),
+                    None)
+                col_valor = columna(d, r'promedio|puntaje|prom|valor|score')
+                if col_asig and col_valor:
+                    antes = len(d)
+                    d = d[d[col_asig].astype(str).str.contains('matem', case=False, na=False)]
+                    col_mate = col_valor
+                    print(f'  formato largo: {col_asig} contiene la asignatura, '
+                          f'{antes} filas -> {len(d)} de matemática')
+                    # Si además distingue el grado, quedarse con 4º básico
+                    col_grado = next(
+                        (c for c in d.columns
+                         if d[c].astype(str).str.contains(r'\b4', regex=True, na=False).any()
+                         and re.search(r'grado|curso|nivel|grad', str(c), re.I)),
+                        None)
+                    if col_grado:
+                        d4 = d[d[col_grado].astype(str).str.contains(r'4', na=False)]
+                        if len(d4):
+                            d = d4
+                            print(f'  filtrado a 4º básico por {col_grado}: {len(d)} filas')
+
             if not col_mate and not col_cat:
-                print(f'    (sin matemática ni categoría) columnas: {list(d.columns)[:12]}')
+                print(f'    (sin matemática ni categoría) columnas: {list(d.columns)[:14]}')
+                if len(d):
+                    print(f'    ejemplo: {d.iloc[0].to_dict()}')
                 continue
             print(f'  columnas: rbd={col_rbd} mate={col_mate} categoria={col_cat}')
 

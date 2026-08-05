@@ -27,3 +27,6 @@ firebase-debug.log
 # que está protegido por reglas, no a GitHub.
 datos/contactos-importados.csv
 datos/contactos-oficiales.csv
+
+# Descargas del Simce: se vuelven a bajar solas
+.cache-simce/
