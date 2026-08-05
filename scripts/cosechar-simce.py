@@ -666,8 +666,17 @@ def main():
         w.writerow(['RBD', 'SIMCE_MATE', 'SIMCE_ANIO', 'CATEGORIA', 'DOLOR', 'FUENTE'])
         for rbd in sorted(filas):
             v = filas[rbd]
-            w.writerow([rbd, v['mate'] or '', v['anio'] or '', v['cat'] or '',
-                        dolor(v['cat'], v['mate']) or '', '; '.join(sorted(v['fuentes'])[:2])])
+            # `x or ''` convertiría un dolor 0 en celda vacía, y eso no es
+            # lo mismo: "sin dolor" es un dato, "sin medición" es su
+            # ausencia. En Firestore la diferencia es grave, porque
+            # orderBy descarta los documentos que no tienen el campo: un
+            # tercio de la base desaparecería del ranking sin aviso.
+            def celda(x):
+                return '' if x is None else x
+
+            w.writerow([rbd, celda(v['mate']), celda(v['anio']), celda(v['cat']),
+                        celda(dolor(v['cat'], v['mate'])),
+                        '; '.join(sorted(v['fuentes'])[:2])])
     os.replace(tmp, a.salida)
 
     con_mate = sum(1 for v in filas.values() if v['mate'] is not None)
