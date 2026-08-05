@@ -22,6 +22,22 @@ const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.dirname(AQUI);
 const LOTE = 500;
 
+// Columna del CSV -> campo del documento. `pisa` distingue el dato de
+// gestión, que nunca sobrescribe lo que el equipo escribió a mano, del
+// dato de fuente oficial (SIMCE), que siempre debe reflejar lo último
+// publicado.
+const MAPA = {
+  EMAIL: { campo: 'email', pisa: false },
+  TELEFONO: { campo: 'telefono', pisa: false },
+  WEB: { campo: 'web', pisa: false },
+  CONTACTO: { campo: 'contacto', pisa: false },
+  SIMCE_MATE: { campo: 'simceMate', pisa: true, numero: true },
+  SIMCE_ANIO: { campo: 'simceAnio', pisa: true, numero: true },
+  CATEGORIA: { campo: 'categoriaDesempeno', pisa: true },
+  DOLOR: { campo: 'dolorMate', pisa: true, numero: true },
+};
+const COLUMNAS = Object.keys(MAPA);
+
 const argv = process.argv.slice(2);
 const tiene = (f) => argv.includes(f);
 const valor = (f, def = null) => {
@@ -117,9 +133,11 @@ async function main() {
   const filas = leerCsv(ruta);
   const conDato = LIMPIAR
     ? filas.filter((f) => f.RBD)
-    : filas.filter((f) => f.RBD && (f.EMAIL || f.TELEFONO || f.WEB || f.CONTACTO));
+    : filas.filter((f) => f.RBD && COLUMNAS.some((c) => f[c]));
+  const presentes = COLUMNAS.filter((c) => conDato.some((f) => f[c]));
   console.log(`${path.relative(RAIZ, ruta)}: ${filas.length} filas, `
-    + `${conDato.length} ${LIMPIAR ? 'a limpiar' : 'con correo o teléfono'}`);
+    + `${conDato.length} ${LIMPIAR ? 'a limpiar' : 'con datos'}`);
+  if (!LIMPIAR) console.log(`Columnas a cargar: ${presentes.join(', ') || 'ninguna'}`);
 
   if (!conDato.length) {
     console.log('Nada que hacer.');
@@ -132,7 +150,8 @@ async function main() {
   if (DRY) {
     console.log('\n--dry-run. Primeras 10:');
     for (const f of conDato.slice(0, 10)) {
-      console.log(`  RBD ${f.RBD.padEnd(6)} ${(f.EMAIL || '—').slice(0, 46).padEnd(48)} ${f.TELEFONO || '—'}`);
+      const vista = presentes.map((c) => `${c}=${(f[c] || '—').slice(0, 34)}`).join('  ');
+      console.log(`  RBD ${f.RBD.padEnd(6)} ${vista}`);
     }
     return;
   }
@@ -171,10 +190,15 @@ async function main() {
           contactoFuente: '', estadoCrm: 'nuevo',
         });
       } else {
-        // No pisar un dato ya verificado a mano con uno cosechado.
-        for (const [csvCol, campo] of [['EMAIL', 'email'], ['TELEFONO', 'telefono'],
-          ['WEB', 'web'], ['CONTACTO', 'contacto']]) {
-          if (f[csvCol] && !String(previo[campo] || '').trim()) datos[campo] = f[csvCol];
+        for (const col of COLUMNAS) {
+          const bruto = f[col];
+          if (!bruto) continue;
+          const { campo, pisa, numero } = MAPA[col];
+          // El contacto escrito a mano gana; el dato oficial se refresca.
+          if (!pisa && String(previo[campo] || '').trim()) continue;
+          const valor = numero ? Number(String(bruto).replace(',', '.')) : bruto;
+          if (numero && !Number.isFinite(valor)) continue;
+          datos[campo] = valor;
         }
         if (!Object.keys(datos).length) { saltados += 1; continue; }
 

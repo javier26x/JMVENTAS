@@ -69,6 +69,18 @@ function distintivoAte(requiere) {
     : '<span class="ate no">✓ Sin ATE</span>';
 }
 
+// Dolor documentado: categoría legal + SIMCE. Se muestra el texto de la
+// categoría junto a la barra; el color nunca va solo.
+function celdaMate(p) {
+  if (!p.categoriaDesempeno && p.dolorMate == null) {
+    return '<span class="sin-contacto">—</span>';
+  }
+  const d = Number(p.dolorMate);
+  const nivel = !Number.isFinite(d) ? '' : d >= 85 ? 'critico' : d >= 60 ? 'serio' : d >= 35 ? 'medio' : 'bajo';
+  const simce = p.simceMate ? `<div class="sub">SIMCE ${Math.round(p.simceMate)}${p.simceAnio ? ` · ${p.simceAnio}` : ''}</div>` : '';
+  return `<div class="mate ${nivel}"><i></i>${esc(p.categoriaDesempeno || `dolor ${d}`)}</div>${simce}`;
+}
+
 function celdaContacto(correos, telefonos) {
   const c = (correos || []).filter(Boolean);
   const t = (telefonos || []).filter(Boolean);
@@ -136,7 +148,7 @@ function consultaProspectos(desde) {
     partes.push(where('requiereAte', '==', $('f-ate').value === 'si'));
   }
 
-  partes.push(orderBy('matBasica', 'desc'));
+  partes.push(orderBy($('f-orden').value || 'matBasica', 'desc'));
   if (desde) partes.push(startAfter(desde));
   partes.push(limit(PAGINA));
   return query(...partes);
@@ -173,6 +185,7 @@ function filtrar(filas) {
   const region = $('f-region').value;
   const ate = $('f-ate').value;
   const est = $('f-estado').value;
+  const cat = $('f-categoria').value;
 
   return filas.filter((f) => {
     if (tier && String(f.tierNum ?? '') !== tier) return false;
@@ -180,6 +193,7 @@ function filtrar(filas) {
     if (region && f.region !== region) return false;
     if (ate && f.requiereAte !== (ate === 'si')) return false;
     if (est && (f.estadoCrm || 'nuevo') !== est) return false;
+    if (cat && String(f.categoriaDesempeno || '').trim() !== cat) return false;
     if (texto) {
       const heno = normalizar(
         [f.establecimiento, f.cuenta, f.comuna, f.region,
@@ -195,11 +209,11 @@ function filtrar(filas) {
 const COLUMNAS = {
   cuentas: ['Prio.', 'Cuenta', 'Canal', 'ATE', 'Colegios', 'Matrícula', 'Contacto', 'Confianza', 'Estado'],
   redes: ['Sostenedor', 'Comuna principal', 'ATE', 'Colegios', 'Matrícula', 'Regiones', 'Estado'],
-  prospectos: ['Tier', 'Establecimiento', 'Canal', 'ATE', 'Matrícula', 'Red', 'Contacto', 'Estado'],
+  prospectos: ['Tier', 'Establecimiento', 'Canal', 'ATE', 'Matemática', 'Matrícula', 'Red', 'Contacto', 'Estado'],
 };
 
 const NUMERICAS = {
-  cuentas: [4, 5], redes: [3, 4, 5], prospectos: [4, 5],
+  cuentas: [4, 5], redes: [3, 4, 5], prospectos: [5, 6],
 };
 
 function filaCuenta(c) {
@@ -246,6 +260,7 @@ function filaProspecto(p) {
     </td>
     <td>${esc(p.canal)}</td>
     <td>${distintivoAte(p.requiereAte)}</td>
+    <td>${celdaMate(p)}</td>
     <td class="num">${numero(p.matBasica)}</td>
     <td class="num">${p.eeEnRed > 1 ? `${numero(p.eeEnRed)} EE` : '—'}</td>
     <td class="contacto">${celdaContacto(correos, tels)}</td>
@@ -276,7 +291,9 @@ function pintarKpis() {
 
 function pintar() {
   const vista = estado.vista;
-  const filas = filtrar(estado[vista]);
+  const orden = $('f-orden').value || 'matBasica';
+  const filas = filtrar(estado[vista])
+    .sort((a, b) => (Number(b[orden]) || 0) - (Number(a[orden]) || 0));
 
   $('cabecera').innerHTML = COLUMNAS[vista]
     .map((c, i) => `<th${NUMERICAS[vista].includes(i) ? ' class="num"' : ''}>${esc(c)}</th>`)
@@ -335,7 +352,8 @@ $('pestanas').addEventListener('click', async (e) => {
 });
 
 $('buscar').addEventListener('input', () => alFiltrar());
-for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado']) {
+for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado',
+  'f-categoria', 'f-orden']) {
   $(id).addEventListener('change', () => alFiltrar({ inmediato: true }));
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));

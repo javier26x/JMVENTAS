@@ -4,80 +4,294 @@
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tokens", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tierNum", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "tierNum",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "canal", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "canal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "region", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "region",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "comuna", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "comuna",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "requiereAte", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "requiereAte",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "estadoCrm", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "estadoCrm",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "rutSostenedor", "order": "ASCENDING" },
-        { "fieldPath": "matBasica", "order": "DESCENDING" }
+        {
+          "fieldPath": "rutSostenedor",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tierNum", "order": "ASCENDING" },
-        { "fieldPath": "puntaje", "order": "DESCENDING" }
+        {
+          "fieldPath": "tierNum",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "actividad",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "rbd", "order": "ASCENDING" },
-        { "fieldPath": "fecha", "order": "DESCENDING" }
+        {
+          "fieldPath": "rbd",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fecha",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tierNum",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "canal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "region",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "requiereAte",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "estadoCrm",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "canal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "region",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "requiereAte",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "estadoCrm",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],

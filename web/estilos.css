@@ -217,10 +217,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .tier.t2 { background: var(--tier-2); }
 .tier.t3 { background: var(--tier-3); }
 
-/* Estado: icono + texto, el color nunca va solo */
+/* Estado: icono + texto, el color nunca va solo.
+   "Requiere ATE" va en tinta apagada a propósito: lo cumple el 95 % de
+   las filas, así que en rojo sólo compite con la señal de compra sin
+   aportar nada. Lo excepcional —y vendible— es no requerirlo. */
 .ate { font-size: 12px; white-space: nowrap; }
-.ate.si { color: var(--critico); }
-.ate.no { color: var(--ok); font-weight: 550; }
+.ate.si { color: var(--tinta-apagada); }
+.ate.no { color: var(--ok); font-weight: 600; }
 
 .prio {
   display: inline-block;
@@ -231,6 +234,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   border: 1px solid var(--borde);
 }
 .prio.p1 { background: var(--aviso); color: #0b0b0b; border-color: transparent; }
+
+/* Dolor en matemática. Los colores de estado son fijos, nunca temáticos,
+   y siempre acompañados del nombre de la categoría: en claro, dos de
+   ellos quedan bajo 3:1, así que el texto es lo que carga el significado. */
+.mate { display: flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+.mate i {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--tinta-apagada); flex: none;
+}
+.mate.critico { color: var(--critico); font-weight: 600; }
+.mate.critico i { background: var(--critico); }
+.mate.serio i { background: #ec835a; }
+.mate.medio i { background: var(--aviso); }
+.mate.bajo i { background: var(--ok); }
 
 .contacto a { display: block; font-size: 13px; text-decoration: none; white-space: nowrap; }
 .contacto a:hover { text-decoration: underline; }
