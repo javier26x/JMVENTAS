@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 from collections import defaultdict
 
 import requests
@@ -77,9 +78,42 @@ def candidatos():
 
 
 RE_MAIL = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
-RE_RBD = re.compile(r'^\s*(\d{1,6})\b')
+RE_NUM = re.compile(r'\b(\d{1,6})\b')
 RE_TEL = re.compile(r'(?:\+?56)?[\s\-]?(?:\(?\d{1,2}\)?[\s\-]?)?\d{4}[\s\-]?\d{4}')
 BASURA = ('@mineduc', 'ejemplo', 'example', 'dominio', 'correo@')
+
+VACIAS = {'colegio', 'escuela', 'liceo', 'centro', 'educacional', 'particular',
+          'basica', 'complejo', 'instituto', 'anexo', 'subvencionado',
+          'municipal', 'para', 'con', 'del', 'las', 'los', 'san', 'santa'}
+
+
+def palabras(texto):
+    """Tokens significativos, sin tildes, para comparar nombres."""
+    limpio = unicodedata.normalize('NFKD', str(texto)).encode('ascii', 'ignore').decode()
+    return {p for p in re.split(r'[^a-zA-Z0-9]+', limpio.lower())
+            if len(p) >= 4 and p not in VACIAS}
+
+
+def indice_rbd():
+    """RBD -> palabras del nombre oficial.
+
+    Anclar por posición no sirve: cada nómina ordena las columnas
+    distinto. Las de 2022 parten con el número de REGIÓN, y 10 de los 16
+    números de región son RBD reales (el 15 es un liceo de Arica, el 9
+    una escuela de Iquique), así que tomar el primer número de la línea
+    le cuelga decenas de correos ajenos a colegios que existen. Se
+    verifica contra el nombre.
+    """
+    ruta = os.path.join(DATOS, 'prospectos_jumpmath.csv')
+    if not os.path.exists(ruta):
+        sys.exit(f'Falta {ruta}: sin él no se puede verificar a qué colegio '
+                 'pertenece cada correo.')
+    idx = {}
+    with open(ruta, encoding='utf-8-sig', newline='') as f:
+        for r in csv.DictReader(f):
+            if r['RBD'].isdigit():
+                idx[int(r['RBD'])] = palabras(r['ESTABLECIMIENTO'])
+    return idx
 
 
 def en_cache(nombre):
@@ -147,7 +181,7 @@ def texto_de_pdf(ruta):
         return ''
 
 
-def parsear(texto, fuente, ventana=3):
+def parsear(texto, fuente, idx, ventana=3):
     """Extrae (rbd, correos, telefonos) por línea.
 
     Devuelve (filas, correos_en_el_documento). El segundo número es el
@@ -170,13 +204,22 @@ def parsear(texto, fuente, ventana=3):
         if not linea.strip():
             rbd_actual = None
             continue
-        m = RE_RBD.match(linea)
-        if m:
-            n = int(m.group(1))
-            # Rango real de RBD en Chile; fuera de él la fila es otra cosa
-            # (un total, una numeración de página) y no se le atribuye nada.
-            rbd_actual = n if 1 <= n <= 60000 else None
-            distancia = 0
+
+        # Candidato = número que es un RBD real Y cuyo nombre oficial
+        # coincide con lo que dice la línea. Sin la segunda condición, el
+        # número de región o el código de comuna pasan por RBD.
+        pal = palabras(linea)
+        mejor, mejor_puntaje = None, 0
+        for n in {int(x) for x in RE_NUM.findall(linea)}:
+            nombre = idx.get(n)
+            if not nombre:
+                continue
+            coincidencias = len(nombre & pal)
+            exigido = min(2, len(nombre)) or 1
+            if coincidencias >= exigido and coincidencias > mejor_puntaje:
+                mejor, mejor_puntaje = n, coincidencias
+        if mejor is not None:
+            rbd_actual, distancia = mejor, 0
         else:
             distancia += 1
         if rbd_actual is None or distancia > ventana:
@@ -194,13 +237,6 @@ def parsear(texto, fuente, ventana=3):
                 filas[rbd_actual]['tels'].add(t.strip())
     return {k: v for k, v in filas.items() if v['mails'] or v['tels']}, fuente
 
-
-def rbds_de_la_base():
-    ruta = os.path.join(DATOS, 'prospectos_jumpmath.csv')
-    if not os.path.exists(ruta):
-        return set()
-    with open(ruta, encoding='utf-8-sig', newline='') as f:
-        return {int(r['RBD']) for r in csv.DictReader(f) if r['RBD'].isdigit()}
 
 
 def main():
@@ -231,6 +267,9 @@ def main():
             print(repr(l[:200]))
         return
 
+    idx = indice_rbd()
+    print(f'Base de verificación: {len(idx)} RBD con nombre oficial')
+
     sesion = requests.Session()
     lista = candidatos()
     print(f'Probando {len(lista)} archivos candidatos en ayudamineduc.cl\n')
@@ -258,7 +297,7 @@ def main():
     total = defaultdict(lambda: {'mails': set(), 'tels': set(), 'fuentes': set()})
     sospechosos = []
     for nombre, ruta in encontrados:
-        filas, correos_doc = parsear(texto_de_pdf(ruta), nombre, a.ventana)
+        filas, correos_doc = parsear(texto_de_pdf(ruta), nombre, idx, a.ventana)
         for rbd, v in filas.items():
             total[rbd]['mails'] |= v['mails']
             total[rbd]['tels'] |= v['tels']
@@ -281,8 +320,7 @@ def main():
         print(f'  python3 scripts/cosechar-oficiales.py --diagnostico {sospechosos[0][0]}')
         print('y ajusta --ventana si las filas se parten en más líneas.')
 
-    base = rbds_de_la_base()
-    utiles = {k: v for k, v in total.items() if not base or k in base}
+    utiles = {k: v for k, v in total.items() if k in idx}
 
     os.makedirs(DATOS, exist_ok=True)
     salida = os.path.join(DATOS, 'contactos-oficiales.csv')
@@ -299,9 +337,8 @@ def main():
 
     con_mail = sum(1 for v in utiles.values() if v['mails'])
     print(f'\nRBD con contacto encontrados: {len(total)}')
-    if base:
-        print(f'  de esos, en nuestra base de básica: {len(utiles)} '
-              f'({len(utiles) * 100 // max(len(base), 1)}% de {len(base)})')
+    print(f'  de esos, en nuestra base de básica: {len(utiles)} '
+          f'({len(utiles) * 100 // max(len(idx), 1)}% de {len(idx)})')
     print(f'  con correo: {con_mail}')
     print(f'\n-> {salida}')
     print('\nSiguiente paso:')

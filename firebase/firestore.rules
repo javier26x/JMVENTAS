@@ -26,7 +26,8 @@ service cloud.firestore {
     function soloCamposCrm() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['estadoCrm', 'email', 'telefono', 'web', 'contacto',
-                  'notas', 'proximoPaso', 'responsable', 'actualizado']);
+                  'contactoFuente', 'notas', 'proximoPaso', 'responsable',
+                  'actualizado']);
     }
 
     match /prospectos/{rbd} {

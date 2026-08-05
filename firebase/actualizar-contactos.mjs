@@ -30,7 +30,9 @@ const valor = (f, def = null) => {
 };
 const ADMIN = tiene('--admin');
 const DRY = tiene('--dry-run');
+const LIMPIAR = tiene('--limpiar');
 const CSV = valor('--csv', 'datos/contactos-oficiales.csv');
+const FUENTE = valor('--fuente', 'oficial');
 
 // Parser CSV mínimo con soporte de comillas: los nombres traen comas.
 function leerCsv(ruta) {
@@ -113,13 +115,19 @@ async function main() {
   if (!fs.existsSync(ruta)) throw new Error(`No existe ${ruta}`);
 
   const filas = leerCsv(ruta);
-  const conDato = filas.filter((f) => f.RBD && (f.EMAIL || f.TELEFONO));
+  const conDato = LIMPIAR
+    ? filas.filter((f) => f.RBD)
+    : filas.filter((f) => f.RBD && (f.EMAIL || f.TELEFONO));
   console.log(`${path.relative(RAIZ, ruta)}: ${filas.length} filas, `
-    + `${conDato.length} con correo o teléfono`);
+    + `${conDato.length} ${LIMPIAR ? 'a limpiar' : 'con correo o teléfono'}`);
 
   if (!conDato.length) {
-    console.log('Nada que actualizar.');
+    console.log('Nada que hacer.');
     return;
+  }
+  if (LIMPIAR && !DRY) {
+    console.log('\nMODO LIMPIEZA: borra email, teléfono y estado de esos RBD '
+      + 'para volver a cosecharlos.\n');
   }
   if (DRY) {
     console.log('\n--dry-run. Primeras 10:');
@@ -149,13 +157,29 @@ async function main() {
       if (!previo) { ausentes += 1; continue; }
 
       const datos = {};
-      // No pisar un dato ya verificado a mano con uno cosechado.
-      if (f.EMAIL && !String(previo.email || '').trim()) datos.email = f.EMAIL;
-      if (f.TELEFONO && !String(previo.telefono || '').trim()) datos.telefono = f.TELEFONO;
-      if (!Object.keys(datos).length) { saltados += 1; continue; }
+      if (LIMPIAR) {
+        // Se revierte lo cosechado automáticamente. Un documento sin
+        // `contactoFuente` viene de una carga anterior a que se registrara
+        // el origen, así que también entra; los editados a mano llevan
+        // otra fuente y se respetan.
+        const origen = previo.contactoFuente;
+        if (origen && origen !== FUENTE) { saltados += 1; continue; }
+        if (!String(previo.email || '').trim()
+            && !String(previo.telefono || '').trim()) { saltados += 1; continue; }
+        Object.assign(datos, {
+          email: '', telefono: '', contactoFuente: '', estadoCrm: 'nuevo',
+        });
+      } else {
+        // No pisar un dato ya verificado a mano con uno cosechado.
+        if (f.EMAIL && !String(previo.email || '').trim()) datos.email = f.EMAIL;
+        if (f.TELEFONO && !String(previo.telefono || '').trim()) datos.telefono = f.TELEFONO;
+        if (!Object.keys(datos).length) { saltados += 1; continue; }
 
-      if (datos.email && (previo.estadoCrm || 'nuevo') === 'nuevo') {
-        datos.estadoCrm = 'contacto_ok';
+        // Deja rastro de origen para poder revertir sólo esto después.
+        datos.contactoFuente = FUENTE;
+        if (datos.email && (previo.estadoCrm || 'nuevo') === 'nuevo') {
+          datos.estadoCrm = 'contacto_ok';
+        }
       }
       datos.actualizado = be.marca;
       b.set(id, datos);
@@ -167,8 +191,10 @@ async function main() {
     process.stdout.write(`\r  ${Math.min(i + LOTE, conDato.length)}/${conDato.length} revisados · ${escritos} actualizados   `);
   }
 
-  console.log(`\n\nActualizados: ${escritos}`);
-  console.log(`Ya tenían contacto (no se pisaron): ${saltados}`);
+  console.log(`\n\n${LIMPIAR ? 'Limpiados' : 'Actualizados'}: ${escritos}`);
+  console.log(LIMPIAR
+    ? `Respetados (editados a mano o ya vacíos): ${saltados}`
+    : `Ya tenían contacto (no se pisaron): ${saltados}`);
   if (ausentes) console.log(`RBD que no están en la base de básica: ${ausentes}`);
   process.exit(0);
 }
