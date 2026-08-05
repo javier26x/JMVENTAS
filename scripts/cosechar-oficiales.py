@@ -82,10 +82,15 @@ RE_TEL = re.compile(r'(?:\+?56)?[\s\-]?(?:\(?\d{1,2}\)?[\s\-]?)?\d{4}[\s\-]?\d{4
 BASURA = ('@mineduc', 'ejemplo', 'example', 'dominio', 'correo@')
 
 
+def en_cache(nombre):
+    destino = os.path.join(CACHE, nombre)
+    return destino if os.path.exists(destino) and os.path.getsize(destino) > 2000 else None
+
+
 def descargar(nombre, sesion):
     os.makedirs(CACHE, exist_ok=True)
     destino = os.path.join(CACHE, nombre)
-    if os.path.exists(destino) and os.path.getsize(destino) > 2000:
+    if en_cache(nombre):
         return destino
     try:
         r = sesion.get(BASE + nombre, headers=HDRS, timeout=45)
@@ -102,8 +107,25 @@ def descargar(nombre, sesion):
     return destino
 
 
+_EXTRACTOR = []
+
+
 def texto_de_pdf(ruta):
-    """pdftotext -layout conserva las columnas; pypdf es el respaldo."""
+    """pdftotext -layout conserva las columnas; pypdf es el respaldo.
+
+    Cuál se use cambia por completo el resultado: pypdf devuelve el texto
+    en orden de dibujo, así que las filas de una tabla quedan
+    desarmadas y el correo se separa de su RBD. Por eso se reporta.
+    """
+    if shutil.which('pdftotext'):
+        if not _EXTRACTOR:
+            _EXTRACTOR.append('pdftotext -layout')
+            print(f'Extractor: {_EXTRACTOR[0]}\n')
+    elif not _EXTRACTOR:
+        _EXTRACTOR.append('pypdf')
+        print('Extractor: pypdf  (sin pdftotext: las tablas se leen peor)\n'
+              '  Instálalo para mejorar el resultado:\n'
+              '    sudo apt-get install -y poppler-utils\n')
     if shutil.which('pdftotext'):
         try:
             out = subprocess.run(['pdftotext', '-layout', ruta, '-'],
@@ -125,16 +147,22 @@ def texto_de_pdf(ruta):
         return ''
 
 
-def parsear(texto, fuente):
+def parsear(texto, fuente, ventana=3):
     """Extrae (rbd, correos, telefonos) por línea.
 
-    Las filas de estas tablas a veces se parten en dos, con el correo o el
-    teléfono cayendo en la línea siguiente. Se permite exactamente UNA
-    línea de continuación: arrastrar el RBD indefinidamente hace que
-    cualquier línea suelta (un pie de página, otra tabla) le cuelgue un
-    correo ajeno al último establecimiento visto. Un correo atribuido al
-    colegio equivocado es peor que un correo faltante.
+    Devuelve (filas, correos_en_el_documento). El segundo número es el
+    diagnóstico: si el documento tiene cientos de correos y las filas
+    salen vacías, el problema es el anclaje al RBD, no el archivo.
+
+    Las filas de estas tablas se parten en varias líneas, con el correo
+    cayendo debajo del nombre. Se permite una ventana corta de
+    continuación: arrastrar el RBD sin límite hace que un pie de página o
+    una segunda tabla le cuelgue un correo ajeno al último
+    establecimiento visto, y un correo atribuido al colegio equivocado es
+    peor que un correo faltante.
     """
+    correos_doc = {c.lower() for c in RE_MAIL.findall(texto)
+                   if not any(b in c.lower() for b in BASURA)}
     filas = defaultdict(lambda: {'mails': set(), 'tels': set()})
     rbd_actual = None
     distancia = 0
@@ -151,7 +179,7 @@ def parsear(texto, fuente):
             distancia = 0
         else:
             distancia += 1
-        if rbd_actual is None or distancia > 1:
+        if rbd_actual is None or distancia > ventana:
             continue
         for correo in RE_MAIL.findall(linea):
             correo = correo.lower().strip('.,;')
@@ -180,7 +208,28 @@ def main():
     ap.add_argument('--listar', action='store_true',
                     help='sólo probar qué URLs existen, sin parsear')
     ap.add_argument('--pausa', type=float, default=1.0)
+    ap.add_argument('--ventana', type=int, default=3,
+                    help='líneas de continuación tras un RBD (default 3)')
+    ap.add_argument('--diagnostico', metavar='ARCHIVO',
+                    help='vuelca el texto extraído de un PDF ya descargado '
+                         'para ver cómo quedan las filas')
     a = ap.parse_args()
+
+    if a.diagnostico:
+        ruta = os.path.join(CACHE, a.diagnostico)
+        if not os.path.exists(ruta):
+            sys.exit(f'No está descargado: {ruta}\nCorre primero el script sin --diagnostico.')
+        texto = texto_de_pdf(ruta)
+        lineas = [l for l in texto.splitlines() if l.strip()]
+        print(f'{a.diagnostico}: {len(lineas)} líneas con contenido\n')
+        print('--- primeras 40 líneas ---')
+        for l in lineas[:40]:
+            print(repr(l[:200]))
+        con_mail = [l for l in lineas if RE_MAIL.search(l)]
+        print(f'\n--- líneas con correo: {len(con_mail)} · primeras 10 ---')
+        for l in con_mail[:10]:
+            print(repr(l[:200]))
+        return
 
     sesion = requests.Session()
     lista = candidatos()
@@ -188,12 +237,16 @@ def main():
 
     encontrados = []
     for nombre in lista:
+        cacheado = bool(en_cache(nombre))
         ruta = descargar(nombre, sesion)
         if ruta:
             kb = os.path.getsize(ruta) // 1024
-            print(f'  OK   {nombre}  ({kb} KB)')
+            print(f'  OK   {nombre}  ({kb} KB){"  [cache]" if cacheado else ""}')
             encontrados.append((nombre, ruta))
-        time.sleep(a.pausa)
+        # Sólo pausar si de verdad salimos a la red: con todo cacheado
+        # el rerun para ajustar --ventana debe ser instantáneo.
+        if not cacheado:
+            time.sleep(a.pausa)
 
     print(f'\n{len(encontrados)} de {len(lista)} disponibles.')
     if a.listar or not encontrados:
@@ -203,13 +256,30 @@ def main():
 
     print('\nParseando…')
     total = defaultdict(lambda: {'mails': set(), 'tels': set(), 'fuentes': set()})
+    sospechosos = []
     for nombre, ruta in encontrados:
-        filas, fuente = parsear(texto_de_pdf(ruta), nombre)
+        filas, correos_doc = parsear(texto_de_pdf(ruta), nombre, a.ventana)
         for rbd, v in filas.items():
             total[rbd]['mails'] |= v['mails']
             total[rbd]['tels'] |= v['tels']
-            total[rbd]['fuentes'].add(fuente)
-        print(f'  {nombre}: {len(filas)} RBD con contacto')
+            total[rbd]['fuentes'].add(nombre)
+        atribuidos = len({c for v in filas.values() for c in v['mails']})
+        # Un documento lleno de correos que no se logran anclar a un RBD
+        # es un fallo de parseo, no un archivo pobre. Hay que verlo.
+        perdidos = len(correos_doc) - atribuidos
+        marca = ''
+        if perdidos > 20:
+            marca = f'  <-- {perdidos} correos sin anclar'
+            sospechosos.append((nombre, len(correos_doc), atribuidos))
+        print(f'  {nombre}: {len(filas)} RBD con contacto '
+              f'({len(correos_doc)} correos en el doc){marca}')
+
+    if sospechosos:
+        print('\nAtención: estos documentos tienen correos que no se pudieron '
+              'atribuir a un RBD.')
+        print('Míralos con:')
+        print(f'  python3 scripts/cosechar-oficiales.py --diagnostico {sospechosos[0][0]}')
+        print('y ajusta --ventana si las filas se parten en más líneas.')
 
     base = rbds_de_la_base()
     utiles = {k: v for k, v in total.items() if not base or k in base}
