@@ -235,6 +235,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 }
 .prio.p1 { background: var(--aviso); color: #0b0b0b; border-color: transparent; }
 
+/* Puntuación de oportunidad. Es una magnitud en una tabla, así que va
+   como número tabular y no como una tercera escala de color: el tier ya
+   usa la rampa azul y el desempeño los colores de estado. */
+.oport {
+  font-weight: 650;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.porque { font-size: 13px; color: var(--tinta-2); max-width: 26ch; }
+
 /* Dolor en matemática. Los colores de estado son fijos, nunca temáticos,
    y siempre acompañados del nombre de la categoría: en claro, dos de
    ellos quedan bajo 3:1, así que el texto es lo que carga el significado. */

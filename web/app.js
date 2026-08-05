@@ -36,11 +36,17 @@ const ETIQUETA_ESTADO = {
   sin_web: 'Sin web', web_sin_mail: 'Web sin correo', contacto_ok: 'Contacto OK',
 };
 
+// Promedio de los 7.314 establecimientos con Simce Matemática 4º básico
+// medido sobre la propia base. Sirve para decirle a cada colegio cuántos
+// puntos está bajo la media, que es el dato que abre la conversación.
+const PROMEDIO_MATE = 253;
+
 const estado = {
-  vista: 'cuentas',
+  vista: 'oportunidades',
   cuentas: [],      // 24 documentos: se cargan completos
   redes: [],        // 325 documentos: se cargan completos
   prospectos: [],   // 7.808: paginados desde el servidor
+  oportunidades: [],// prospectos con dolor documentado, paginados
   ultimoDoc: null,
   hayMas: false,
   meta: null,
@@ -79,6 +85,31 @@ function celdaMate(p) {
   const nivel = !Number.isFinite(d) ? '' : d >= 85 ? 'critico' : d >= 60 ? 'serio' : d >= 35 ? 'medio' : 'bajo';
   const simce = p.simceMate ? `<div class="sub">SIMCE ${Math.round(p.simceMate)}${p.simceAnio ? ` · ${p.simceAnio}` : ''}</div>` : '';
   return `<div class="mate ${nivel}"><i></i>${esc(p.categoriaDesempeno || `dolor ${d}`)}</div>${simce}`;
+}
+
+/* Oportunidad = mitad dolor documentado, mitad facilidad de cierre.
+   Un colegio con crisis de matemática al que no se le puede vender hasta
+   2028 no es una oportunidad, y uno fácil de cerrar que ya rinde bien
+   tampoco. El valor está en la intersección, y `puntaje` ya condensa
+   matrícula, red, fricción de compra y copago. */
+function oportunidadDe(p) {
+  const dolor = Number(p.dolorMate);
+  const facilidad = Number(p.puntaje);
+  if (!Number.isFinite(dolor) || !Number.isFinite(facilidad)) return null;
+  return Math.round(0.5 * dolor + 0.5 * facilidad);
+}
+
+/* Sólo lo que no se lee en otra columna. El tier y el requisito ATE ya
+   tienen su propio distintivo al lado, así que repetirlos acá llenaba la
+   celda de texto sin agregar nada. */
+function porQue(p) {
+  const razones = [];
+  const brecha = Number.isFinite(Number(p.simceMate))
+    ? Math.round(PROMEDIO_MATE - Number(p.simceMate)) : null;
+  if (brecha > 0) razones.push(`${brecha} pts bajo el promedio`);
+  if (p.eeEnRed > 2) razones.push(`red de ${numero(p.eeEnRed)} colegios`);
+  if (/MAS DE|100\.000/.test(p.copago || '')) razones.push('copago alto');
+  return razones.join(' · ');
 }
 
 function celdaContacto(correos, telefonos) {
@@ -133,6 +164,22 @@ function consultaProspectos(desde) {
   const texto = normalizar($('buscar').value).trim();
   const partes = [collection(db, 'prospectos')];
 
+  /* Pestaña Oportunidades: sólo los que tienen dolor documentado. En
+     Firestore una desigualdad obliga a ordenar primero por ese mismo
+     campo, así que el ranking por oportunidad se arma en el cliente
+     sobre la página traída. */
+  if (estado.vista === 'oportunidades') {
+    const umbral = Number($('f-umbral').value) || 60;
+    partes.push(where('dolorMate', '>=', umbral));
+    if ($('f-tier').value) partes.push(where('tierNum', '==', Number($('f-tier').value)));
+    else if ($('f-canal').value) partes.push(where('canal', '==', $('f-canal').value));
+    else if ($('f-region').value) partes.push(where('region', '==', $('f-region').value));
+    partes.push(orderBy('dolorMate', 'desc'));
+    if (desde) partes.push(startAfter(desde));
+    partes.push(limit(PAGINA));
+    return query(...partes);
+  }
+
   const palabra = texto.split(/\s+/).filter((p) => p.length >= 3)[0];
   if (palabra) {
     partes.push(where('tokens', 'array-contains', palabra));
@@ -162,7 +209,12 @@ async function cargarProspectos({ continuar = false } = {}) {
     const snap = await getDocs(consultaProspectos(continuar ? estado.ultimoDoc : null));
     if (mio !== estado.peticion) return;            // llegó tarde: la descartamos
     const filas = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    estado.prospectos = continuar ? estado.prospectos.concat(filas) : filas;
+    if (estado.vista === 'oportunidades') {
+      for (const f of filas) f._oport = oportunidadDe(f);
+      estado.oportunidades = continuar ? estado.oportunidades.concat(filas) : filas;
+    } else {
+      estado.prospectos = continuar ? estado.prospectos.concat(filas) : filas;
+    }
     estado.ultimoDoc = snap.docs[snap.docs.length - 1] || null;
     estado.hayMas = snap.docs.length === PAGINA;
     limpiarError();
@@ -207,13 +259,15 @@ function filtrar(filas) {
 
 // ---------- pintado ----------
 const COLUMNAS = {
+  oportunidades: ['Oport.', 'Establecimiento', 'Por qué', 'Matemática', 'Tier',
+                  'Matrícula', 'Contacto', 'Estado'],
   cuentas: ['Prio.', 'Cuenta', 'Canal', 'ATE', 'Colegios', 'Matrícula', 'Contacto', 'Confianza', 'Estado'],
   redes: ['Sostenedor', 'Comuna principal', 'ATE', 'Colegios', 'Matrícula', 'Regiones', 'Estado'],
   prospectos: ['Tier', 'Establecimiento', 'Canal', 'ATE', 'Matemática', 'Matrícula', 'Red', 'Contacto', 'Estado'],
 };
 
 const NUMERICAS = {
-  cuentas: [4, 5], redes: [3, 4, 5], prospectos: [5, 6],
+  oportunidades: [0, 5], cuentas: [4, 5], redes: [3, 4, 5], prospectos: [5, 6],
 };
 
 function filaCuenta(c) {
@@ -268,6 +322,24 @@ function filaProspecto(p) {
   </tr>`;
 }
 
+function filaOportunidad(p) {
+  const correos = (p.email || '').split(';').map((s) => s.trim()).filter(Boolean);
+  const tels = (p.telefono || '').split(';').map((s) => s.trim()).filter(Boolean);
+  return `<tr>
+    <td class="num"><span class="oport">${p._oport ?? '—'}</span></td>
+    <td>
+      <div class="nombre">${esc(p.establecimiento)}</div>
+      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(p.canal)}</div>
+    </td>
+    <td class="porque">${esc(porQue(p)) || '—'}</td>
+    <td>${celdaMate(p)}</td>
+    <td>${distintivoTier(p.tierNum)}<div class="sub">${distintivoAte(p.requiereAte)}</div></td>
+    <td class="num">${numero(p.matBasica)}</td>
+    <td class="contacto">${celdaContacto(correos, tels)}</td>
+    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>
+  </tr>`;
+}
+
 function pintarKpis() {
   const m = estado.meta;
   const conContacto = estado.cuentas.filter((c) => c.tieneContacto).length;
@@ -291,7 +363,7 @@ function pintarKpis() {
 
 function pintar() {
   const vista = estado.vista;
-  const orden = $('f-orden').value || 'matBasica';
+  const orden = vista === 'oportunidades' ? '_oport' : ($('f-orden').value || 'matBasica');
   const filas = filtrar(estado[vista])
     .sort((a, b) => (Number(b[orden]) || 0) - (Number(a[orden]) || 0));
 
@@ -299,13 +371,27 @@ function pintar() {
     .map((c, i) => `<th${NUMERICAS[vista].includes(i) ? ' class="num"' : ''}>${esc(c)}</th>`)
     .join('');
 
-  const pinta = { cuentas: filaCuenta, redes: filaRed, prospectos: filaProspecto }[vista];
+  const pinta = {
+    oportunidades: filaOportunidad, cuentas: filaCuenta,
+    redes: filaRed, prospectos: filaProspecto,
+  }[vista];
   $('cuerpo').innerHTML = filas.map(pinta).join('');
 
   $('vacio').classList.toggle('oculto', filas.length > 0 || estado.cargando);
-  $('mas').classList.toggle('oculto', !(vista === 'prospectos' && estado.hayMas));
+  const paginada = vista === 'prospectos' || vista === 'oportunidades';
+  $('mas').classList.toggle('oculto', !(paginada && estado.hayMas));
+  $('f-umbral').classList.toggle('oculto', vista !== 'oportunidades');
+  $('f-orden').classList.toggle('oculto', vista === 'oportunidades');
 
   const revisados = estado[vista].length;
+  if (vista === 'oportunidades') {
+    const alumnos = filas.reduce((a, f) => a + (Number(f.matBasica) || 0), 0);
+    const sinAte = filas.filter((f) => !f.requiereAte).length;
+    $('resultado').textContent = `${numero(filas.length)} colegios · `
+      + `${numero(alumnos)} alumnos · ${sinAte} sin requisito ATE`
+      + (estado.hayMas ? ' · hay más' : '');
+    return;
+  }
   $('resultado').textContent = vista === 'prospectos'
     ? `${numero(filas.length)} de ${numero(revisados)} revisados${estado.hayMas ? ' · hay más' : ''}`
     : `${numero(filas.length)} de ${numero(revisados)}`;
@@ -328,7 +414,7 @@ let temporizador;
 function alFiltrar({ inmediato = false } = {}) {
   clearTimeout(temporizador);
   const correr = async () => {
-    if (estado.vista === 'prospectos') {
+    if (estado.vista === 'prospectos' || estado.vista === 'oportunidades') {
       estado.ultimoDoc = null;
       await cargarProspectos();
     } else {
@@ -343,7 +429,8 @@ $('pestanas').addEventListener('click', async (e) => {
   if (!b) return;
   [...$('pestanas').children].forEach((x) => x.setAttribute('aria-selected', String(x === b)));
   estado.vista = b.dataset.vista;
-  if (estado.vista === 'prospectos' && !estado.prospectos.length) {
+  const paginada = estado.vista === 'prospectos' || estado.vista === 'oportunidades';
+  if (paginada && !estado[estado.vista].length) {
     await cargarProspectos();
     poblarFiltros();
   } else {
@@ -353,7 +440,7 @@ $('pestanas').addEventListener('click', async (e) => {
 
 $('buscar').addEventListener('input', () => alFiltrar());
 for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado',
-  'f-categoria', 'f-orden']) {
+  'f-categoria', 'f-orden', 'f-umbral']) {
   $(id).addEventListener('change', () => alFiltrar({ inmediato: true }));
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));
@@ -407,7 +494,8 @@ onAuthStateChanged(auth, async (u) => {
   try {
     await cargarFijos();
     pintarKpis();
-    pintar();
+    await cargarProspectos();
+    poblarFiltros();
     $('cargando').classList.add('oculto');
   } catch (e) {
     $('cargando').classList.add('oculto');
