@@ -457,3 +457,59 @@ button.nav[aria-current="true"] {
   .lateral-pie { margin: 0 0 0 auto; }
   .editor { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Filtros activos, selección de filas
+   ============================================================ */
+.chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 22px 12px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  padding: 4px 6px 4px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--acento) 12%, transparent);
+  color: var(--tinta);
+  border: 1px solid transparent;
+}
+.chip button {
+  border: none; background: none; padding: 0 3px;
+  color: var(--tinta-2); font-size: 14px; line-height: 1; cursor: pointer;
+}
+.chip button:hover { color: var(--critico); }
+
+.barra-seleccion {
+  margin: 0 22px 14px;
+  padding: 12px 16px;
+  border-radius: var(--radio);
+  border: 1px solid var(--acento);
+  background: color-mix(in srgb, var(--acento) 8%, var(--superficie));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 8px;
+  z-index: 15;
+}
+.barra-seleccion .sub { margin: 0; }
+.barra-seleccion .fila-botones { margin-left: auto; }
+
+/* Columna de selección: pequeña y sin ruido visual */
+th.sel, td.sel { width: 34px; padding-right: 0; }
+td.sel input, th.sel input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--acento); }
+tr.marcada { background: color-mix(in srgb, var(--acento) 7%, transparent); }
+tr.marcada:hover { background: color-mix(in srgb, var(--acento) 11%, transparent); }
+
+/* Acción por fila: escribirle sólo a este colegio */
+.accion-fila {
+  border: none; background: none; padding: 2px 6px;
+  font-size: 15px; opacity: 0; transition: opacity .12s;
+}
+tr:hover .accion-fila, tr.marcada .accion-fila { opacity: 1; }
+.accion-fila:hover { background: color-mix(in srgb, var(--acento) 15%, transparent); border-radius: 6px; }
+
+/* Al refiltrar se mantiene la tabla anterior atenuada: un esqueleto
+   parpadeando obliga a releer la pantalla en cada tecla. */
+.envoltura.recargando tbody { opacity: 0.45; transition: opacity .15s; }

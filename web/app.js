@@ -65,6 +65,17 @@ const estado = {
   cuentas: [], redes: [], prospectos: [], oportunidades: [],
   ultimoDoc: null, hayMas: false, meta: null, cargando: false, peticion: 0,
   campanas: [], campanaActual: null, destinatarios: [], cancelar: false,
+  // id -> fila. Se guarda el dato completo, no sólo el id, para que la
+  // selección sobreviva al cambio de filtros y a la paginación: si sólo
+  // se guardara el id, al filtrar se perdería lo elegido antes.
+  seleccion: new Map(),
+};
+
+const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
+  'f-estado', 'f-orden', 'f-umbral'];
+const ETIQUETA_FILTRO = {
+  buscar: 'Búsqueda', 'f-tier': 'Tier', 'f-canal': 'Canal', 'f-region': 'Región',
+  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-umbral': 'Dolor',
 };
 
 // ---------- presentación ----------
@@ -189,7 +200,10 @@ async function cargarProspectos({ continuar = false } = {}) {
   const mio = ++estado.peticion;
   const vista = estado.vista;
   estado.cargando = true;
-  $('cargando').classList.remove('oculto');
+  // Se conserva la tabla anterior atenuada en vez de vaciarla: un
+  // esqueleto parpadeando obliga a releer la pantalla en cada tecla.
+  document.querySelector('#vista-listado .envoltura').classList.add('recargando');
+  $('cargando').classList.toggle('oculto', estado[vista].length > 0);
   try {
     const snap = await getDocs(consultaProspectos(continuar ? estado.ultimoDoc : null));
     if (mio !== estado.peticion) return;
@@ -205,6 +219,7 @@ async function cargarProspectos({ continuar = false } = {}) {
     if (mio === estado.peticion) {
       estado.cargando = false;
       $('cargando').classList.add('oculto');
+      document.querySelector('#vista-listado .envoltura').classList.remove('recargando');
       pintar();
     }
   }
@@ -244,7 +259,7 @@ const NUMERICAS = {
 const partes = (s) => String(s || '').split(';').map((x) => x.trim()).filter(Boolean);
 
 const FILA = {
-  oportunidades: (p) => `<tr>
+  oportunidades: (p) => `
     <td class="num"><span class="oport">${p._oport ?? '—'}</span></td>
     <td><div class="nombre">${esc(p.establecimiento)}</div>
       <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(p.canal)}</div></td>
@@ -253,9 +268,9 @@ const FILA = {
     <td>${distintivoTier(p.tierNum)}<div class="sub">${distintivoAte(p.requiereAte)}</div></td>
     <td class="num">${numero(p.matBasica)}</td>
     <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono))}</td>
-    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td></tr>`,
+    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>`,
 
-  prospectos: (p) => `<tr>
+  prospectos: (p) => `
     <td>${distintivoTier(p.tierNum)}</td>
     <td><div class="nombre">${esc(p.establecimiento)}</div>
       <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(p.dependencia)}</div></td>
@@ -265,9 +280,9 @@ const FILA = {
     <td class="num">${numero(p.matBasica)}</td>
     <td class="num">${p.eeEnRed > 1 ? `${numero(p.eeEnRed)} EE` : '—'}</td>
     <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono))}</td>
-    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td></tr>`,
+    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>`,
 
-  cuentas: (c) => `<tr>
+  cuentas: (c) => `
     <td><span class="prio${c.prioridad === 1 ? ' p1' : ''}">${c.prioridad ?? '—'}</span></td>
     <td><div class="nombre">${esc(c.cuenta)}</div>
       <div class="sub">${esc(c.tipo)}${c.nombreContacto ? ` · ${esc(c.nombreContacto)}` : ''}</div>
@@ -278,9 +293,9 @@ const FILA = {
     <td class="num">${c.matBasica ? numero(c.matBasica) : '—'}</td>
     <td class="contacto">${celdaContacto(c.emails, c.telefonos)}</td>
     <td>${esc(c.confianza || '—')}</td>
-    <td>${selectorEstado('cuentas', c.id, c.estadoCrm)}</td></tr>`,
+    <td>${selectorEstado('cuentas', c.id, c.estadoCrm)}</td>`,
 
-  redes: (r) => `<tr>
+  redes: (r) => `
     <td><div class="nombre">${esc(r.rutSostenedor)}</div>
       <div class="sub">${esc(r.establecimientoMayor || '')}</div></td>
     <td>${esc(r.comunaPrincipal || '—')}</td>
@@ -288,7 +303,7 @@ const FILA = {
     <td class="num">${numero(r.eeBasica)}</td>
     <td class="num">${numero(r.matBasica)}</td>
     <td class="num">${numero(r.nRegiones)}</td>
-    <td>${selectorEstado('redes', r.id, r.estadoCrm)}</td></tr>`,
+    <td>${selectorEstado('redes', r.id, r.estadoCrm)}</td>`,
 };
 
 function pintarKpis() {
@@ -316,9 +331,28 @@ function pintar() {
   const filas = filtrar(estado[v])
     .sort((a, b) => (Number(b[orden]) || 0) - (Number(a[orden]) || 0));
 
-  $('cabecera-tabla').innerHTML = COLUMNAS[v]
-    .map((c, i) => `<th${NUMERICAS[v].includes(i) ? ' class="num"' : ''}>${esc(c)}</th>`).join('');
-  $('cuerpo').innerHTML = filas.map(FILA[v]).join('');
+  const seleccionable = PAGINADAS.includes(v);
+  const todasMarcadas = seleccionable && filas.length
+    && filas.every((f) => estado.seleccion.has(claveFila(f)));
+
+  $('cabecera-tabla').innerHTML =
+    (seleccionable ? `<th class="sel"><input type="checkbox" id="sel-todos"`
+      + `${todasMarcadas ? ' checked' : ''} title="Seleccionar todo lo visible"></th>` : '')
+    + COLUMNAS[v].map((c, i) => `<th${NUMERICAS[v].includes(i) ? ' class="num"' : ''}>${esc(c)}</th>`).join('')
+    + (seleccionable ? '<th></th>' : '');
+
+  $('cuerpo').innerHTML = filas.map((f) => {
+    const celdas = FILA[v](f);
+    if (!seleccionable) return `<tr>${celdas}</tr>`;
+    const marcada = estado.seleccion.has(claveFila(f));
+    const conCorreo = String(f.email || '').trim();
+    return `<tr class="${marcada ? 'marcada' : ''}" data-id="${esc(f.id)}">`
+      + `<td class="sel"><input type="checkbox" data-marcar="${esc(f.id)}"`
+      + `${marcada ? ' checked' : ''} aria-label="Seleccionar"></td>`
+      + celdas
+      + `<td>${conCorreo ? `<button class="accion-fila" data-solo="${esc(f.id)}"`
+        + ` title="Escribirle sólo a este colegio">✉</button>` : ''}</td></tr>`;
+  }).join('');
 
   $('vacio').classList.toggle('oculto', filas.length > 0 || estado.cargando);
   $('mas').classList.toggle('oculto', !(PAGINADAS.includes(v) && estado.hayMas));
@@ -326,6 +360,8 @@ function pintar() {
   $('f-orden').classList.toggle('oculto', v === 'oportunidades');
 
   $(`n-${v}`).textContent = numero(filas.length);
+  pintarChips();
+  pintarSeleccion();
 
   if (v === 'oportunidades') {
     const alumnos = filas.reduce((a, f) => a + (Number(f.matBasica) || 0), 0);
@@ -338,6 +374,65 @@ function pintar() {
       : `${numero(filas.length)} de ${numero(estado[v].length)}`;
   }
   actualizarAcciones();
+}
+
+/* Los filtros sobreviven a la recarga: quien está trabajando un segmento
+   no debería tener que rearmarlo cada vez que vuelve. */
+function guardarFiltros() {
+  const v = {};
+  for (const id of CAMPOS_FILTRO) v[id] = $(id).value;
+  try { localStorage.setItem('jm.filtros', JSON.stringify(v)); } catch { /* modo privado */ }
+}
+
+function restaurarFiltros() {
+  try {
+    const v = JSON.parse(localStorage.getItem('jm.filtros') || '{}');
+    for (const id of CAMPOS_FILTRO) {
+      if (v[id] != null && $(id).querySelector?.(`option[value="${CSS.escape(v[id])}"]`) !== null) {
+        $(id).value = v[id];
+      }
+    }
+  } catch { /* nada que restaurar */ }
+}
+
+function pintarChips() {
+  const activos = [];
+  for (const id of CAMPOS_FILTRO) {
+    if (id === 'f-orden') continue;
+    if (id === 'f-umbral' && estado.vista !== 'oportunidades') continue;
+    const el = $(id);
+    if (!el.value) continue;
+    const texto = el.tagName === 'SELECT'
+      ? el.options[el.selectedIndex].text : el.value;
+    // No repetir la etiqueta si la opción ya la dice: "ATE: Sin requisito ATE"
+    const etiqueta = ETIQUETA_FILTRO[id];
+    const redundante = normalizar(texto).includes(normalizar(etiqueta));
+    activos.push({ id, texto: redundante ? texto : `${etiqueta}: ${texto}` });
+  }
+  $('chips').innerHTML = activos.map((a) => `<span class="chip">${esc(a.texto)}`
+    + `<button data-limpiar="${a.id}" title="Quitar">×</button></span>`).join('');
+  $('limpiar-filtros').classList.toggle('oculto', activos.length === 0);
+
+  /* Los KPI son cifras globales y fijas. Sirven al entrar, pero una vez
+     que hay un segmento en juego sólo empujan la tabla hacia abajo: los
+     números que importan ahí son los del segmento, que ya están en la
+     línea de resultado y en la barra de selección. */
+  $('kpis').classList.toggle('oculto', activos.length > 0 || estado.seleccion.size > 0);
+}
+
+// ---------- selección ----------
+function claveFila(f) { return `${estado.vista}:${f.id}`; }
+
+function pintarSeleccion() {
+  const n = estado.seleccion.size;
+  $('barra-seleccion').classList.toggle('oculto', n === 0);
+  if (!n) return;
+  const filas = [...estado.seleccion.values()];
+  const alumnos = filas.reduce((a, f) => a + (Number(f.matBasica) || 0), 0);
+  const conCorreo = filas.filter((f) => String(f.email || '').trim()).length;
+  $('sel-conteo').textContent = `${numero(n)} seleccionado${n === 1 ? '' : 's'}`;
+  $('sel-detalle').textContent = `${numero(alumnos)} alumnos · ${numero(conCorreo)} con correo`;
+  $('sel-campana').disabled = conCorreo === 0;
 }
 
 function poblarFiltros() {
@@ -390,6 +485,10 @@ function actualizarAcciones() {
 // Campañas
 // ============================================================
 function descripcionSegmento() {
+  if (estado.seleccion.size) {
+    return `${estado.seleccion.size} colegio${estado.seleccion.size === 1 ? '' : 's'}`
+      + ' elegido a mano'.replace('elegido', estado.seleccion.size === 1 ? 'elegido' : 'elegidos');
+  }
   const p = [];
   if ($('f-tier').value) p.push(`Tier ${$('f-tier').value}`);
   if ($('f-canal').value) p.push($('f-canal').value);
@@ -400,8 +499,13 @@ function descripcionSegmento() {
   return p.length ? p.join(' · ') : 'Todos los prospectos cargados';
 }
 
+/* La selección manual gana sobre el filtro: si alguien marcó colegios
+   uno por uno, eso es lo que quiere enviar, no lo que quedó en pantalla. */
 function segmentoActual() {
-  return filtrar(estado[estado.vista])
+  const base = estado.seleccion.size
+    ? [...estado.seleccion.values()]
+    : filtrar(estado[estado.vista]);
+  return base
     .filter((p) => mail.primerCorreo(p.email))
     .map((p) => ({ ...p, rbd: p.rbd ?? Number(p.id) }));
 }
@@ -602,9 +706,74 @@ document.querySelector('.lateral').addEventListener('click', async (e) => {
   else pintar();
 });
 
-$('buscar').addEventListener('input', () => alFiltrar());
+// --- selección de filas ---
+$('cuerpo').addEventListener('click', (e) => {
+  const marcar = e.target.closest('input[data-marcar]');
+  if (marcar) {
+    const fila = estado[estado.vista].find((f) => f.id === marcar.dataset.marcar);
+    if (!fila) return;
+    const k = claveFila(fila);
+    if (marcar.checked) estado.seleccion.set(k, fila); else estado.seleccion.delete(k);
+    marcar.closest('tr').classList.toggle('marcada', marcar.checked);
+    pintarSeleccion();
+    return;
+  }
+  const solo = e.target.closest('button[data-solo]');
+  if (solo) {
+    const fila = estado[estado.vista].find((f) => f.id === solo.dataset.solo);
+    if (!fila) return;
+    estado.seleccion.clear();
+    estado.seleccion.set(claveFila(fila), fila);
+    pintarSeleccion();
+    abrirEditorDesdeSegmento();
+  }
+});
+
+$('cabecera-tabla').addEventListener('change', (e) => {
+  if (e.target.id !== 'sel-todos') return;
+  // Marca sólo lo visible tras los filtros, no los 7.808 de la base.
+  const visibles = filtrar(estado[estado.vista]);
+  for (const f of visibles) {
+    const k = claveFila(f);
+    if (e.target.checked) estado.seleccion.set(k, f); else estado.seleccion.delete(k);
+  }
+  pintar();
+});
+
+$('sel-limpiar').addEventListener('click', () => { estado.seleccion.clear(); pintar(); });
+$('sel-campana').addEventListener('click', abrirEditorDesdeSegmento);
+
+// --- filtros ---
+$('chips').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-limpiar]');
+  if (!b) return;
+  $(b.dataset.limpiar).value = '';
+  guardarFiltros();
+  alFiltrar({ inmediato: true });
+});
+
+$('limpiar-filtros').addEventListener('click', () => {
+  for (const id of CAMPOS_FILTRO) {
+    if (id === 'f-orden') continue;
+    if (id === 'f-umbral') { $(id).value = '60'; continue; }
+    $(id).value = '';
+  }
+  guardarFiltros();
+  alFiltrar({ inmediato: true });
+});
+
+// "/" enfoca la búsqueda, como en cualquier herramienta de trabajo diario
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    $('buscar').focus();
+  }
+  if (e.key === 'Escape' && estado.seleccion.size) { estado.seleccion.clear(); pintar(); }
+});
+
+$('buscar').addEventListener('input', () => { guardarFiltros(); alFiltrar(); });
 for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado', 'f-orden', 'f-umbral']) {
-  $(id).addEventListener('change', () => alFiltrar({ inmediato: true }));
+  $(id).addEventListener('change', () => { guardarFiltros(); alFiltrar({ inmediato: true }); });
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));
 
@@ -729,6 +898,7 @@ onAuthStateChanged(auth, async (u) => {
     pintarKpis();
     $('n-cuentas').textContent = numero(estado.cuentas.length);
     $('n-redes').textContent = numero(estado.redes.length);
+    restaurarFiltros();
     irA('oportunidades');
     await cargarProspectos();
     poblarFiltros();

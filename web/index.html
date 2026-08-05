@@ -74,7 +74,7 @@
       <section class="kpis" id="kpis"></section>
 
       <section class="filtros" id="filtros">
-        <input type="search" id="buscar" placeholder="Buscar colegio o comuna…" autocomplete="off">
+        <input type="search" id="buscar" placeholder="Buscar colegio o comuna…  (/)" autocomplete="off">
         <select id="f-tier">
           <option value="">Todos los tiers</option>
           <option value="1">1 · Fácil</option>
@@ -108,8 +108,21 @@
           <option value="dolorMate">Ordenar: dolor en matemática</option>
           <option value="puntaje">Ordenar: facilidad de cierre</option>
         </select>
+        <button class="fantasma oculto" id="limpiar-filtros">Limpiar filtros</button>
         <span class="resultado" id="resultado"></span>
       </section>
+
+      <div id="chips" class="chips"></div>
+
+      <!-- Aparece sólo cuando hay filas marcadas -->
+      <div id="barra-seleccion" class="barra-seleccion oculto">
+        <strong id="sel-conteo"></strong>
+        <span id="sel-detalle" class="sub"></span>
+        <div class="fila-botones">
+          <button class="primario" id="sel-campana">Crear campaña con la selección</button>
+          <button class="fantasma" id="sel-limpiar">Quitar selección</button>
+        </div>
+      </div>
 
       <div class="envoltura">
         <table>
