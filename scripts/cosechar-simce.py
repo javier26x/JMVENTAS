@@ -7,7 +7,7 @@
 # respuesta: un establecimiento en categoría Insuficiente tiene la
 # obligación legal de mejorar y presupuesto SEP para hacerlo.
 #
-#   pip install --break-system-packages requests beautifulsoup4 pandas openpyxl
+#   pip install --break-system-packages requests beautifulsoup4 pandas openpyxl ijson
 #
 #   python3 scripts/cosechar-simce.py --descubrir     # ver qué hay publicado
 #   python3 scripts/cosechar-simce.py --url <enlace>  # bajar y cruzar
@@ -105,6 +105,8 @@ def bajar(url):
 
 
 TABULARES = ('.csv', '.xlsx', '.xls', '.txt', '.tsv', '.dat', '.jsonld', '.json')
+# Sobre este tamaño no se arma un DataFrame: se recorre en streaming.
+LIMITE_MEMORIA = 50 * 1024 * 1024
 
 
 def _plano(v):
@@ -148,6 +150,76 @@ def leer_jsonld(buf, nombre):
     if not filas:
         return []
     return [pd.DataFrame(filas).astype(str)]
+
+
+def rbd_de(valor):
+    """El establecimiento viene como referencia RDF, no como número."""
+    m = re.search(r'(\d{1,6})\s*$', str(valor or '').strip().rstrip('/'))
+    if not m:
+        return None
+    n = int(m.group(1))
+    return n if 1 <= n <= 60000 else None
+
+
+def es_cuarto_basico(grado):
+    """4B, 4° básico, 04 -> sí. 8B, II medio -> no."""
+    g = str(grado or '')
+    return bool(re.search(r'(^|\D)0?4(\D|$)', g)) if g else True
+
+
+def extraer_jsonld_stream(ruta, base, filas, fuente):
+    """Recorre el JSON-LD sin cargarlo entero.
+
+    La base de establecimientos son 366 MB de RDF: json.load la
+    convertiría en varios GB de objetos Python y voltea la máquina.
+    ijson la recorre nodo a nodo con memoria constante.
+
+    Devuelve None si no hay ijson, para que el llamador decida.
+    """
+    try:
+        import ijson
+    except ImportError:
+        return None
+
+    vistos = leidos = 0
+    with open(ruta, 'rb') as f:
+        for nodo in ijson.items(f, '@graph.item'):
+            if not isinstance(nodo, dict):
+                continue
+            leidos += 1
+            campos = {re.split(r'[/#]', str(k))[-1]: _plano(v)
+                      for k, v in nodo.items() if not k.startswith('@')}
+
+            if 'matem' not in str(campos.get('asignatura', '')).lower():
+                continue
+            if not es_cuarto_basico(campos.get('grado')):
+                continue
+            rbd = rbd_de(campos.get('establecimiento') or campos.get('rbd'))
+            if rbd is None or rbd not in base:
+                continue
+
+            try:
+                prom = float(str(campos.get('prom', '')).replace(',', '.'))
+            except (ValueError, TypeError):
+                continue
+            if not 100 <= prom <= 400:
+                continue
+            try:
+                anio = int(float(str(campos.get('anio', 0))))
+            except (ValueError, TypeError):
+                anio = 0
+
+            f_ = filas.setdefault(rbd, {'mate': None, 'anio': None,
+                                        'cat': None, 'fuentes': set()})
+            # Puede haber varios años por establecimiento: gana el último.
+            if f_['anio'] is None or anio >= f_['anio']:
+                f_['mate'], f_['anio'] = prom, anio or None
+            f_['fuentes'].add(fuente)
+            vistos += 1
+
+    print(f'    {leidos} nodos recorridos, {vistos} de matemática 4º básico '
+          f'cruzados con la base')
+    return len(filas)
 
 
 def leer_tabla(buf, nombre):
@@ -215,9 +287,14 @@ def extraer_rar(ruta, destino):
     return False
 
 
-def explorar(ruta, prefijo='', omitir=None, nivel=0):
-    """(tablas, manifiesto), entrando a zip y rar anidados."""
+def explorar(ruta, prefijo='', omitir=None, nivel=0, grandes=None):
+    """(tablas, manifiesto), entrando a zip y rar anidados.
+
+    Los archivos que no caben en memoria se apartan en `grandes` para
+    recorrerlos en streaming."""
     tablas, manifiesto = [], []
+    if grandes is None:
+        grandes = []
     bajo = ruta.lower()
     nombre = os.path.basename(ruta)
 
@@ -247,8 +324,12 @@ def explorar(ruta, prefijo='', omitir=None, nivel=0):
                 print('    sudo apt-get install -y p7zip-rar     # alternativa')
                 return tablas, manifiesto
     elif bajo.endswith(TABULARES):
-        kb = os.path.getsize(ruta) // 1024
-        manifiesto.append(f'{prefijo}{nombre}  ({kb} KB)')
+        tam = os.path.getsize(ruta)
+        manifiesto.append(f'{prefijo}{nombre}  ({tam // 1024} KB)')
+        if tam > LIMITE_MEMORIA and bajo.endswith(('.jsonld', '.json')):
+            grandes.append(ruta)
+            print(f'    {nombre}: {tam // 1024 // 1024} MB, se recorre en streaming')
+            return tablas, manifiesto
         with open(ruta, 'rb') as f:
             return leer_tabla(io.BytesIO(f.read()), nombre), manifiesto
     else:
@@ -258,15 +339,18 @@ def explorar(ruta, prefijo='', omitir=None, nivel=0):
     manifiesto.append(f'{prefijo}{nombre}/')
     for raiz, _, archivos in os.walk(trabajo):
         for f in sorted(archivos):
-            t, m = explorar(os.path.join(raiz, f), prefijo + '  ', omitir, nivel + 1)
+            t, m = explorar(os.path.join(raiz, f), prefijo + '  ', omitir,
+                            nivel + 1, grandes)
             tablas += t
             manifiesto += m
     return tablas, manifiesto
 
 
 def tablas_de(ruta, omitir=None):
-    """Devuelve (DataFrames, manifiesto de lo que había dentro)."""
-    return explorar(ruta, omitir=omitir)
+    """Devuelve (DataFrames, manifiesto, archivos para streaming)."""
+    grandes = []
+    tablas, manifiesto = explorar(ruta, omitir=omitir, grandes=grandes)
+    return tablas, manifiesto, grandes
 
 
 def columna(d, *patrones):
@@ -347,11 +431,18 @@ def main():
     for ruta in rutas:
         print(f'\nLeyendo {os.path.basename(ruta)}')
         omitir = None if a.incluir_idps else re.compile(r'idps', re.I)
-        tablas, manifiesto = tablas_de(ruta, omitir)
+        tablas, manifiesto, grandes = tablas_de(ruta, omitir)
         manifiestos += manifiesto
-        print(f'  {len(manifiesto)} archivos dentro, {len(tablas)} tablas legibles')
+        print(f'  {len(manifiesto)} archivos dentro, {len(tablas)} tablas legibles'
+              + (f', {len(grandes)} en streaming' if grandes else ''))
+
+        for g in grandes:
+            print(f'  recorriendo {os.path.basename(g)}')
+            if extraer_jsonld_stream(g, base, filas, os.path.basename(g)) is None:
+                print('    ! falta ijson para leerlo sin agotar la memoria:')
+                print('      pip install --break-system-packages ijson')
         for d in tablas:
-            col_rbd = columna(d, r'^rbd$', r'\brbd\b', r'cod.*ee|id.*establec')
+            col_rbd = columna(d, r'^rbd$', r'\brbd\b', r'establecimiento', r'cod.*ee')
             if not col_rbd:
                 print(f'    (sin columna RBD) columnas: {list(d.columns)[:12]}')
                 continue
