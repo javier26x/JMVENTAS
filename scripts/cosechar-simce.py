@@ -181,9 +181,33 @@ def extraer_jsonld_stream(ruta, base, filas, fuente):
     except ImportError:
         return None
 
+    # La ruta depende de cómo esté envuelto el grafo. Un array en el
+    # nivel superior necesita 'item'; un objeto, '@graph.item'. Elegir
+    # mal no da error: recorre cero nodos en silencio, que es peor.
+    with open(ruta, 'rb') as f:
+        inicio = f.read(4096).lstrip()
+    if inicio[:1] == b'[':
+        candidatas = ['item']
+    else:
+        candidatas = ['@graph.item', 'graph.item', 'item',
+                      'data.item', 'results.item']
+
+    for camino in candidatas:
+        vistos, leidos = _recorrer(ijson, ruta, camino, base, filas, fuente)
+        if leidos:
+            print(f'    ruta JSON "{camino}": {leidos} nodos recorridos, '
+                  f'{vistos} de matemática 4º básico cruzados con la base')
+            return len(filas)
+
+    print(f'    ninguna ruta JSON dio nodos (probadas: {", ".join(candidatas)})')
+    print(f'    primeros bytes: {inicio[:120]!r}')
+    return len(filas)
+
+
+def _recorrer(ijson, ruta, camino, base, filas, fuente):
     vistos = leidos = 0
     with open(ruta, 'rb') as f:
-        for nodo in ijson.items(f, '@graph.item'):
+        for nodo in ijson.items(f, camino):
             if not isinstance(nodo, dict):
                 continue
             leidos += 1
@@ -216,10 +240,7 @@ def extraer_jsonld_stream(ruta, base, filas, fuente):
                 f_['mate'], f_['anio'] = prom, anio or None
             f_['fuentes'].add(fuente)
             vistos += 1
-
-    print(f'    {leidos} nodos recorridos, {vistos} de matemática 4º básico '
-          f'cruzados con la base')
-    return len(filas)
+    return vistos, leidos
 
 
 def leer_tabla(buf, nombre):
