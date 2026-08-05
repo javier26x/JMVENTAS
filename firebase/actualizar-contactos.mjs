@@ -38,6 +38,14 @@ const MAPA = {
 };
 const COLUMNAS = Object.keys(MAPA);
 
+// Una operación que no responde ni falla deja el proceso colgado sin
+// diagnóstico: se le pone plazo para que el reintento pueda actuar.
+const conTiempo = (promesa, ms, que) => Promise.race([
+  promesa,
+  new Promise((_, rechazar) => setTimeout(
+    () => rechazar(new Error(`${que}: sin respuesta en ${ms / 1000}s`)), ms)),
+]);
+
 const argv = process.argv.slice(2);
 const tiene = (f) => argv.includes(f);
 const valor = (f, def = null) => {
@@ -48,6 +56,7 @@ const ADMIN = tiene('--admin');
 const DRY = tiene('--dry-run');
 const LIMPIAR = tiene('--limpiar');
 const CSV = valor('--csv', 'datos/contactos-oficiales.csv');
+const DESDE = Number(valor('--desde', 0)) || 0;
 const FUENTE = valor('--fuente', 'oficial');
 
 // Parser CSV mínimo con soporte de comillas: los nombres traen comas.
@@ -90,10 +99,18 @@ async function backend() {
     return {
       etiqueta: 'admin',
       marca: FieldValue.serverTimestamp(),
+      // getAll con 500 referencias de una vez se estanca sin devolver ni
+      // fallar. En trozos de 100 responde, y si uno se cuelga el timeout
+      // lo convierte en reintento en vez de en espera infinita.
       leer: async (ids) => {
-        const refs = ids.map((id) => db.collection('prospectos').doc(id));
-        const snaps = await db.getAll(...refs);
-        return new Map(snaps.filter((s) => s.exists).map((s) => [s.id, s.data()]));
+        const mapa = new Map();
+        for (let i = 0; i < ids.length; i += 100) {
+          const refs = ids.slice(i, i + 100)
+            .map((id) => db.collection('prospectos').doc(id));
+          const snaps = await conTiempo(db.getAll(...refs), 60000, 'lectura');
+          for (const s of snaps) if (s.exists) mapa.set(s.id, s.data());
+        }
+        return mapa;
       },
       batch: () => {
         const b = db.batch();
@@ -164,16 +181,33 @@ async function main() {
   let saltados = 0;
   let ausentes = 0;
 
-  for (let i = 0; i < conDato.length; i += LOTE) {
+  // Si todas las columnas del CSV son de fuente oficial, no hay nada que
+  // preservar y la lectura previa sobra: son 7.314 lecturas menos.
+  // La limpieza siempre lee: distingue lo cosechado de lo escrito a mano.
+  const necesitaLeer = LIMPIAR || presentes.some((c) => !MAPA[c].pisa);
+  if (!necesitaLeer) console.log('Sin lectura previa: ninguna columna preserva datos.\n');
+
+  for (let i = DESDE; i < conDato.length; i += LOTE) {
     const trozo = conDato.slice(i, i + LOTE);
-    const actuales = await be.leer(trozo.map((f) => String(f.RBD)));
+    let actuales = new Map();
+    if (necesitaLeer) {
+      for (let intento = 0; ; intento += 1) {
+        try {
+          actuales = await be.leer(trozo.map((f) => String(f.RBD)));
+          break;
+        } catch (e) {
+          if (intento >= 3) throw e;
+          process.stdout.write(`\n  reintento de lectura ${intento + 1}: ${e.message}`);
+        }
+      }
+    }
     const b = be.batch();
     let enLote = 0;
 
     for (const f of trozo) {
       const id = String(f.RBD);
       const previo = actuales.get(id);
-      if (!previo) { ausentes += 1; continue; }
+      if (necesitaLeer && !previo) { ausentes += 1; continue; }
 
       const datos = {};
       if (LIMPIAR) {
@@ -181,10 +215,10 @@ async function main() {
         // `contactoFuente` viene de una carga anterior a que se registrara
         // el origen, así que también entra; los editados a mano llevan
         // otra fuente y se respetan.
-        const origen = previo.contactoFuente;
+        const origen = previo?.contactoFuente;
         if (origen && origen !== FUENTE) { saltados += 1; continue; }
-        if (!String(previo.email || '').trim()
-            && !String(previo.telefono || '').trim()) { saltados += 1; continue; }
+        if (!String(previo?.email || '').trim()
+            && !String(previo?.telefono || '').trim()) { saltados += 1; continue; }
         Object.assign(datos, {
           email: '', telefono: '', web: '', contacto: '',
           contactoFuente: '', estadoCrm: 'nuevo',
@@ -195,7 +229,7 @@ async function main() {
           if (!bruto) continue;
           const { campo, pisa, numero } = MAPA[col];
           // El contacto escrito a mano gana; el dato oficial se refresca.
-          if (!pisa && String(previo[campo] || '').trim()) continue;
+          if (!pisa && String(previo?.[campo] || '').trim()) continue;
           const valor = numero ? Number(String(bruto).replace(',', '.')) : bruto;
           if (numero && !Number.isFinite(valor)) continue;
           datos[campo] = valor;
@@ -215,7 +249,9 @@ async function main() {
 
     if (enLote) await b.commit();
     escritos += enLote;
-    process.stdout.write(`\r  ${Math.min(i + LOTE, conDato.length)}/${conDato.length} revisados · ${escritos} actualizados   `);
+    const hasta = Math.min(i + LOTE, conDato.length);
+    process.stdout.write(`\r  ${hasta}/${conDato.length} revisados · ${escritos} actualizados`
+      + `   (reanudar: --desde ${hasta})   `);
   }
 
   console.log(`\n\n${LIMPIAR ? 'Limpiados' : 'Actualizados'}: ${escritos}`);
