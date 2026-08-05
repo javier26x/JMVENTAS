@@ -108,6 +108,52 @@ python3 scripts/analizar-base.py
 column -s, -t datos/contactos-verificados.csv | less -S
 ```
 
+## Conseguir los correos de los colegios
+
+Tres fuentes, en este orden. Las dos primeras son gratis y oficiales; la tercera es la que cuesta tiempo.
+
+### 1. Nóminas oficiales de Ayuda MINEDUC (empieza por acá)
+
+MINEDUC publica nóminas regionales en PDF con **RBD, teléfono y correo** por establecimiento. Son oficiales, gratuitas y no requieren raspar nada.
+
+```bash
+pip install --break-system-packages requests pypdf
+sudo apt-get install -y poppler-utils          # opcional, mejora el parseo
+
+python3 scripts/cosechar-oficiales.py --listar   # ver qué archivos existen hoy
+python3 scripts/cosechar-oficiales.py            # descargar y parsear
+node firebase/actualizar-contactos.mjs --admin --csv datos/contactos-oficiales.csv
+```
+
+El script prueba ~90 nombres de archivo candidatos (16 regiones × varias convenciones, porque MINEDUC los publica con plantillas distintas cada año) y reporta cuáles resolvieron. Deja `datos/contactos-oficiales.csv` con RBD, correo, teléfono y de qué archivo salió cada dato.
+
+### 2. Registro de correos de sostenedores (Superintendencia)
+
+`supereduc.cl/sostenedores-habilitados/` publica el **Registro de Correos Electrónicos de Sostenedores** por RUT. Para la estrategia de redes esto vale más que el correo del colegio: un sostenedor es quien decide por sus 8, 17 u 83 establecimientos. Se cruza con la columna `RUT_SOSTENEDOR`.
+
+### 3. Raspado de los sitios propios (lo que falte)
+
+```bash
+python3 scripts/enriquecer-contactos.py --csv datos/prospectos_jumpmath.csv \
+  --tier "1 · FACIL" --canal "A · Directo Privado" --limite 250
+node firebase/actualizar-contactos.mjs --admin --csv datos/prospectos_jumpmath.csv
+```
+
+### Qué esperar de verdad
+
+**No existe una fuente con los 7.808 correos.** La cobertura realista, por segmento:
+
+| Segmento | EE | Expectativa | Por qué |
+|---|---:|---|---|
+| Particular pagado | 499 | Casi total | Todos tienen sitio y correo de admisión público |
+| Particular subvencionado | 3.077 | Alta | La mayoría tiene sitio; muchos salen en las nóminas MINEDUC |
+| Municipal urbano y SLEP | ~1.500 | Media | Muchos no tienen sitio propio; el contacto real es el DAEM o el SLEP |
+| Municipal rural | ~2.700 | Baja | Escuelas de 20-80 alumnos, sin sitio ni correo publicado |
+
+Para las ~2.700 rurales el correo del establecimiento no es el camino: **se venden por sostenedor**, y ahí el contacto es el DAEM o el SLEP, que sí es público. Perseguir esos correos uno a uno es trabajo perdido — un municipio con 30 escuelas rurales es un solo contrato.
+
+`actualizar-contactos.mjs` nunca pisa un contacto ya verificado a mano con uno cosechado, y marca `estadoCrm` como `contacto_ok` cuando aparece un correo nuevo, así el CRM refleja el avance.
+
 ## Completar los contactos que faltan
 
 `datos/contactos-verificados.csv` cubre la cabecera del pipeline (las 7 redes principales, los colegios privados de mayor matrícula, el Registro ATE y los SLEP identificados). El resto del Tier 1 se completa con el enriquecedor:
