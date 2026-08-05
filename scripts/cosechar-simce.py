@@ -161,9 +161,26 @@ def rbd_de(valor):
     return n if 1 <= n <= 60000 else None
 
 
+def ultimo(valor):
+    """Último segmento de una URI, sin tildes y en minúsculas.
+
+    En RDF las dimensiones suelen ser recursos, no literales: la
+    asignatura llega como …/asignatura/MATEMATICA, no como "Matemática".
+    """
+    s = str(valor or '').strip().rstrip('/')
+    s = re.split(r'[/#]', s)[-1]
+    import unicodedata
+    return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode().lower()
+
+
+def es_matematica(valor):
+    v = ultimo(valor)
+    return 'matem' in v or v in ('mat', 'mate', 'mt')
+
+
 def es_cuarto_basico(grado):
     """4B, 4° básico, 04 -> sí. 8B, II medio -> no."""
-    g = str(grado or '')
+    g = ultimo(grado)
     return bool(re.search(r'(^|\D)0?4(\D|$)', g)) if g else True
 
 
@@ -193,10 +210,19 @@ def extraer_jsonld_stream(ruta, base, filas, fuente):
                       'data.item', 'results.item']
 
     for camino in candidatas:
-        vistos, leidos = _recorrer(ijson, ruta, camino, base, filas, fuente)
+        muestras = {}
+        vistos, leidos = _recorrer(ijson, ruta, camino, base, filas, fuente, muestras)
         if leidos:
             print(f'    ruta JSON "{camino}": {leidos} nodos recorridos, '
                   f'{vistos} de matemática 4º básico cruzados con la base')
+            if not vistos:
+                print('\n    Ningún nodo pasó los filtros. Valores reales '
+                      'de los primeros 3.000:')
+                for k in sorted(muestras):
+                    ejemplos = sorted(muestras[k])[:6]
+                    print(f'      {k}: {ejemplos}')
+                print('\n    Con esto se ajusta el reconocimiento de asignatura, '
+                      'grado y establecimiento.')
             return len(filas)
 
     print(f'    ninguna ruta JSON dio nodos (probadas: {", ".join(candidatas)})')
@@ -204,7 +230,8 @@ def extraer_jsonld_stream(ruta, base, filas, fuente):
     return len(filas)
 
 
-def _recorrer(ijson, ruta, camino, base, filas, fuente):
+def _recorrer(ijson, ruta, camino, base, filas, fuente, muestras=None):
+    """muestras: dict clave -> valores distintos observados, para diagnóstico."""
     vistos = leidos = 0
     with open(ruta, 'rb') as f:
         for nodo in ijson.items(f, camino):
@@ -214,7 +241,16 @@ def _recorrer(ijson, ruta, camino, base, filas, fuente):
             campos = {re.split(r'[/#]', str(k))[-1]: _plano(v)
                       for k, v in nodo.items() if not k.startswith('@')}
 
-            if 'matem' not in str(campos.get('asignatura', '')).lower():
+            # Se recogen los valores reales de los primeros nodos: cuando
+            # ningún registro pasa los filtros, la pregunta no es cuántos
+            # sino qué contienen.
+            if muestras is not None and leidos <= 3000:
+                for k, v in campos.items():
+                    s = muestras.setdefault(k, set())
+                    if len(s) < 8:
+                        s.add(str(v)[:70])
+
+            if not es_matematica(campos.get('asignatura')):
                 continue
             if not es_cuarto_basico(campos.get('grado')):
                 continue
