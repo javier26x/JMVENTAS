@@ -21,3 +21,9 @@ firebase-debug.log
 
 # PDFs descargados de MINEDUC — se vuelven a bajar solos
 .cache-pdf/
+
+# Datos de contacto masivos: el repo es público y estos archivos traen
+# miles de correos personales y nombres de personas. Van a Firestore,
+# que está protegido por reglas, no a GitHub.
+datos/contactos-importados.csv
+datos/contactos-oficiales.csv

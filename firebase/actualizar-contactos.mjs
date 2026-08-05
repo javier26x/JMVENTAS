@@ -117,7 +117,7 @@ async function main() {
   const filas = leerCsv(ruta);
   const conDato = LIMPIAR
     ? filas.filter((f) => f.RBD)
-    : filas.filter((f) => f.RBD && (f.EMAIL || f.TELEFONO));
+    : filas.filter((f) => f.RBD && (f.EMAIL || f.TELEFONO || f.WEB || f.CONTACTO));
   console.log(`${path.relative(RAIZ, ruta)}: ${filas.length} filas, `
     + `${conDato.length} ${LIMPIAR ? 'a limpiar' : 'con correo o teléfono'}`);
 
@@ -167,12 +167,15 @@ async function main() {
         if (!String(previo.email || '').trim()
             && !String(previo.telefono || '').trim()) { saltados += 1; continue; }
         Object.assign(datos, {
-          email: '', telefono: '', contactoFuente: '', estadoCrm: 'nuevo',
+          email: '', telefono: '', web: '', contacto: '',
+          contactoFuente: '', estadoCrm: 'nuevo',
         });
       } else {
         // No pisar un dato ya verificado a mano con uno cosechado.
-        if (f.EMAIL && !String(previo.email || '').trim()) datos.email = f.EMAIL;
-        if (f.TELEFONO && !String(previo.telefono || '').trim()) datos.telefono = f.TELEFONO;
+        for (const [csvCol, campo] of [['EMAIL', 'email'], ['TELEFONO', 'telefono'],
+          ['WEB', 'web'], ['CONTACTO', 'contacto']]) {
+          if (f[csvCol] && !String(previo[campo] || '').trim()) datos[campo] = f[csvCol];
+        }
         if (!Object.keys(datos).length) { saltados += 1; continue; }
 
         // Deja rastro de origen para poder revertir sólo esto después.
