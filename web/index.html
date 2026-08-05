@@ -3,106 +3,235 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JUMP Math Chile · Prospección comercial</title>
-<meta name="description" content="CRM de prospección: 7.808 establecimientos con básica regular, priorizados por facilidad de cierre.">
+<title>JUMP Math Chile · Prospección</title>
+<meta name="description" content="CRM de prospección: 7.808 establecimientos priorizados por facilidad de cierre y dolor documentado en matemática.">
 <link rel="stylesheet" href="estilos.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📐</text></svg>">
 </head>
 <body>
 
-<header class="barra">
-  <div class="marca">JUMP Math Chile <span>· prospección</span></div>
-  <div class="empuje"></div>
-  <div id="usuario" class="usuario oculto">
-    <img id="avatar" alt="">
-    <span id="correo"></span>
-    <button class="fantasma" id="salir">Salir</button>
-  </div>
-</header>
-
-<!-- Pantalla de acceso: las reglas exigen usuario autenticado -->
+<!-- Acceso: las reglas exigen usuario autenticado -->
 <section id="acceso" class="acceso">
   <h1>Prospección comercial</h1>
   <p>
-    7.808 establecimientos con educación básica regular, priorizados por
-    facilidad de cierre. Entra con tu cuenta de Google para ver la base.
+    7.808 establecimientos con educación básica, priorizados por facilidad
+    de cierre y por resultados de matemática. Entra con tu cuenta de Google.
   </p>
   <div><button class="primario" id="entrar">Entrar con Google</button></div>
-  <p id="acceso-error" class="oculto" style="color:var(--critico)"></p>
+  <p id="acceso-error" class="error-texto oculto"></p>
 </section>
 
-<main id="app" class="oculto">
+<div id="app" class="app oculto">
 
-  <!-- Cifras de cabecera: fila de stat tiles, no un gráfico -->
-  <section class="kpis" id="kpis"></section>
+  <nav class="lateral">
+    <div class="marca">JUMP&nbsp;Math <span>Chile</span></div>
 
-  <!-- Una sola fila de filtros, sobre todo lo que afecta -->
-  <section class="filtros">
-    <div class="pestanas" id="pestanas" role="tablist">
-      <button role="tab" data-vista="oportunidades" aria-selected="true">🎯 Oportunidades</button>
-      <button role="tab" data-vista="cuentas" aria-selected="false">Cuentas</button>
-      <button role="tab" data-vista="redes" aria-selected="false">Redes</button>
-      <button role="tab" data-vista="prospectos" aria-selected="false">Prospectos</button>
+    <div class="grupo">
+      <div class="grupo-tit">Prospección</div>
+      <button class="nav" data-vista="oportunidades" aria-current="true">
+        <span class="ic">🎯</span> Oportunidades <em id="n-oportunidades"></em>
+      </button>
+      <button class="nav" data-vista="prospectos">
+        <span class="ic">🏫</span> Prospectos <em id="n-prospectos"></em>
+      </button>
+      <button class="nav" data-vista="cuentas">
+        <span class="ic">⭐</span> Cuentas <em id="n-cuentas"></em>
+      </button>
+      <button class="nav" data-vista="redes">
+        <span class="ic">🔗</span> Redes <em id="n-redes"></em>
+      </button>
     </div>
 
-    <input type="search" id="buscar" placeholder="Buscar colegio o comuna…" autocomplete="off">
-    <select id="f-tier">
-      <option value="">Todos los tiers</option>
-      <option value="1">1 · Fácil</option>
-      <option value="2">2 · Medio</option>
-      <option value="3">3 · Difícil</option>
-    </select>
-    <select id="f-canal"><option value="">Todos los canales</option></select>
-    <select id="f-region"><option value="">Todas las regiones</option></select>
-    <select id="f-ate">
-      <option value="">ATE: indiferente</option>
-      <option value="no">Sin requisito ATE</option>
-      <option value="si">Requiere ATE</option>
-    </select>
-    <select id="f-categoria">
-      <option value="">Desempeño: todos</option>
-      <option value="Insuficiente">Insuficiente</option>
-      <option value="Medio-Bajo">Medio-Bajo</option>
-      <option value="Medio">Medio</option>
-      <option value="Alto">Alto</option>
-    </select>
-    <select id="f-orden">
-      <option value="matBasica">Ordenar: matrícula</option>
-      <option value="dolorMate">Ordenar: dolor en matemática</option>
-      <option value="puntaje">Ordenar: facilidad de cierre</option>
-    </select>
-    <select id="f-umbral" class="oculto">
-      <option value="60">Dolor 60+ (bajo el promedio)</option>
-      <option value="85">Dolor 85+ (crítico)</option>
-      <option value="35">Dolor 35+ (amplio)</option>
-    </select>
-    <select id="f-estado">
-      <option value="">Todos los estados</option>
-      <option value="nuevo">Nuevo</option>
-      <option value="contactado">Contactado</option>
-      <option value="reunion">Reunión agendada</option>
-      <option value="propuesta">Propuesta enviada</option>
-      <option value="ganado">Ganado</option>
-      <option value="descartado">Descartado</option>
-    </select>
-    <span class="resultado" id="resultado"></span>
-  </section>
+    <div class="grupo">
+      <div class="grupo-tit">Contacto</div>
+      <button class="nav" data-vista="campanas">
+        <span class="ic">✉️</span> Campañas <em id="n-campanas"></em>
+      </button>
+    </div>
 
-  <div id="error" class="error oculto"></div>
+    <div class="lateral-pie">
+      <div class="usuario">
+        <img id="avatar" alt="">
+        <span id="correo"></span>
+      </div>
+      <button class="fantasma" id="salir">Cerrar sesión</button>
+    </div>
+  </nav>
 
-  <div class="envoltura">
-    <table>
-      <thead><tr id="cabecera"></tr></thead>
-      <tbody id="cuerpo"></tbody>
-    </table>
-    <div id="cargando" class="cargando">Cargando…</div>
-    <div id="vacio" class="vacio oculto">Sin resultados para estos filtros.</div>
-  </div>
+  <main class="principal">
+    <header class="cabecera">
+      <div>
+        <h1 id="titulo">Oportunidades</h1>
+        <p id="subtitulo" class="sub"></p>
+      </div>
+      <div id="acciones-vista"></div>
+    </header>
 
-  <div class="pie">
-    <button id="mas" class="oculto">Cargar más</button>
-  </div>
-</main>
+    <div id="error" class="error oculto"></div>
+
+    <!-- ============ VISTAS DE LISTADO ============ -->
+    <section id="vista-listado">
+      <section class="kpis" id="kpis"></section>
+
+      <section class="filtros" id="filtros">
+        <input type="search" id="buscar" placeholder="Buscar colegio o comuna…" autocomplete="off">
+        <select id="f-tier">
+          <option value="">Todos los tiers</option>
+          <option value="1">1 · Fácil</option>
+          <option value="2">2 · Medio</option>
+          <option value="3">3 · Difícil</option>
+        </select>
+        <select id="f-canal"><option value="">Todos los canales</option></select>
+        <select id="f-region"><option value="">Todas las regiones</option></select>
+        <select id="f-ate">
+          <option value="">ATE: indiferente</option>
+          <option value="no">Sin requisito ATE</option>
+          <option value="si">Requiere ATE</option>
+        </select>
+        <select id="f-estado">
+          <option value="">Todos los estados</option>
+          <option value="nuevo">Nuevo</option>
+          <option value="contacto_ok">Con contacto</option>
+          <option value="contactado">Contactado</option>
+          <option value="reunion">Reunión agendada</option>
+          <option value="propuesta">Propuesta enviada</option>
+          <option value="ganado">Ganado</option>
+          <option value="descartado">Descartado</option>
+        </select>
+        <select id="f-umbral" class="oculto">
+          <option value="60">Dolor 60+ (bajo el promedio)</option>
+          <option value="85">Dolor 85+ (crítico)</option>
+          <option value="35">Dolor 35+ (amplio)</option>
+        </select>
+        <select id="f-orden">
+          <option value="matBasica">Ordenar: matrícula</option>
+          <option value="dolorMate">Ordenar: dolor en matemática</option>
+          <option value="puntaje">Ordenar: facilidad de cierre</option>
+        </select>
+        <span class="resultado" id="resultado"></span>
+      </section>
+
+      <div class="envoltura">
+        <table>
+          <thead><tr id="cabecera-tabla"></tr></thead>
+          <tbody id="cuerpo"></tbody>
+        </table>
+        <div id="cargando" class="cargando">Cargando…</div>
+        <div id="vacio" class="vacio oculto">Sin resultados para estos filtros.</div>
+      </div>
+
+      <div class="pie"><button id="mas" class="oculto">Cargar más</button></div>
+    </section>
+
+    <!-- ============ CAMPAÑAS ============ -->
+    <section id="vista-campanas" class="oculto">
+      <div id="gmail-estado" class="aviso">
+        <div>
+          <strong>Gmail no conectado.</strong>
+          Los correos se envían desde tu cuenta con la API de Gmail.
+          Conéctala para poder enviar y detectar respuestas.
+        </div>
+        <button class="primario" id="conectar-gmail">Conectar Gmail</button>
+      </div>
+
+      <div class="envoltura">
+        <table>
+          <thead><tr>
+            <th>Campaña</th><th>Estado</th>
+            <th class="num">Destinatarios</th><th class="num">Enviados</th>
+            <th class="num">Respuestas</th><th class="num">Aperturas</th>
+            <th>Creada</th><th></th>
+          </tr></thead>
+          <tbody id="cuerpo-campanas"></tbody>
+        </table>
+        <div id="campanas-vacio" class="vacio oculto">
+          Todavía no hay campañas. Crea una desde un segmento de prospectos.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ EDITOR DE CAMPAÑA ============ -->
+    <section id="vista-editor" class="oculto">
+      <div class="editor">
+        <div class="editor-col">
+          <label>Nombre interno
+            <input type="text" id="c-nombre" placeholder="Tier 1 · dolor alto · agosto">
+          </label>
+
+          <label>Asunto
+            <input type="text" id="c-asunto"
+                   placeholder="{{establecimiento}}: 53 puntos bajo el promedio en matemática">
+          </label>
+
+          <label>Mensaje
+            <textarea id="c-cuerpo" rows="16"></textarea>
+          </label>
+
+          <div class="variables">
+            Variables disponibles — haz clic para insertar:
+            <div id="lista-variables"></div>
+          </div>
+        </div>
+
+        <div class="editor-col">
+          <div class="tarjeta">
+            <h3>Destinatarios</h3>
+            <p class="sub" id="segmento-desc">—</p>
+            <div class="fila-botones">
+              <button id="c-recalcular">Recalcular desde los filtros actuales</button>
+            </div>
+            <div id="segmento-resumen" class="resumen-segmento"></div>
+          </div>
+
+          <div class="tarjeta">
+            <h3>Vista previa</h3>
+            <p class="sub">Con los datos de un destinatario real.</p>
+            <div id="previsualizacion" class="previsualizacion"></div>
+          </div>
+
+          <div class="tarjeta">
+            <h3>Seguimiento</h3>
+            <label class="check">
+              <input type="checkbox" id="c-track-aperturas">
+              Registrar aperturas y clics
+            </label>
+            <p class="sub" id="track-aviso">
+              Requiere desplegar la función de seguimiento y el plan Blaze.
+              Sin ella se registran envíos, errores y respuestas.
+            </p>
+          </div>
+
+          <div class="fila-botones">
+            <button id="c-guardar">Guardar borrador</button>
+            <button class="primario" id="c-enviar">Enviar campaña</button>
+            <button class="fantasma" id="c-volver">Volver</button>
+          </div>
+          <div id="c-progreso" class="progreso oculto"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DETALLE DE CAMPAÑA ============ -->
+    <section id="vista-detalle" class="oculto">
+      <section class="kpis" id="kpis-campana"></section>
+      <div class="fila-botones" style="padding:0 22px 12px">
+        <button id="d-revisar">Revisar respuestas en Gmail</button>
+        <button id="d-reanudar" class="oculto">Reanudar envío</button>
+        <button class="fantasma" id="d-volver">Volver a campañas</button>
+      </div>
+      <div class="envoltura">
+        <table>
+          <thead><tr>
+            <th>Establecimiento</th><th>Correo</th><th>Estado</th>
+            <th>Enviado</th><th class="num">Aperturas</th><th>Detalle</th>
+          </tr></thead>
+          <tbody id="cuerpo-destinatarios"></tbody>
+        </table>
+        <div id="detalle-cargando" class="cargando oculto">Cargando…</div>
+      </div>
+    </section>
+  </main>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

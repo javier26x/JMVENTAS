@@ -48,6 +48,21 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Campañas de correo. Cada usuario ve las del equipo pero sólo
+    // borra las suyas; los contadores de apertura y clic los escribe la
+    // función de seguimiento con credenciales de servicio, que no pasa
+    // por estas reglas.
+    match /campanas/{campana} {
+      allow read: if autenticado();
+      allow create: if autenticado() && request.resource.data.uid == request.auth.uid;
+      allow update: if autenticado();
+      allow delete: if autenticado() && resource.data.uid == request.auth.uid;
+
+      match /destinatarios/{rbd} {
+        allow read, write: if autenticado();
+      }
+    }
+
     match /meta/{doc} {
       allow read: if autenticado();
       allow write: if false;
