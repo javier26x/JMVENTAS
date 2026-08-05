@@ -101,36 +101,73 @@ def bajar(url):
     return destino
 
 
-def tablas_de(ruta):
-    """Devuelve DataFrames desde csv/xlsx, incluidos los que vengan en zip."""
-    import pandas as pd
+TABULARES = ('.csv', '.xlsx', '.xls', '.txt', '.tsv', '.dat')
 
-    def leer(buf, nombre):
-        try:
-            if nombre.lower().endswith(('.xlsx', '.xls')):
-                return list(pd.read_excel(buf, sheet_name=None, dtype=str).values())
-            for sep in (';', ',', '\t'):
+
+def leer_tabla(buf, nombre):
+    """Un DataFrame por hoja/archivo, probando separadores y codificaciones."""
+    import pandas as pd
+    try:
+        if nombre.lower().endswith(('.xlsx', '.xls')):
+            return list(pd.read_excel(buf, sheet_name=None, dtype=str).values())
+        mejor = None
+        for cod in ('utf-8', 'latin-1'):
+            for sep in (';', ',', '\t', '|'):
                 buf.seek(0)
-                d = pd.read_csv(buf, sep=sep, dtype=str, encoding='latin-1',
-                                on_bad_lines='skip', low_memory=False)
-                if len(d.columns) > 2:
-                    return [d]
-        except Exception as e:
-            print(f'    ! {nombre}: {e}')
+                try:
+                    d = pd.read_csv(buf, sep=sep, dtype=str, encoding=cod,
+                                    on_bad_lines='skip', low_memory=False)
+                except Exception:
+                    continue
+                # Con el separador equivocado sale una sola columna gigante:
+                # se queda el que más columnas produce.
+                if len(d.columns) > 2 and (mejor is None or len(d.columns) > len(mejor.columns)):
+                    mejor = d
+        return [mejor] if mejor is not None else []
+    except Exception as e:
+        print(f'    ! {nombre}: {e}')
         return []
 
+
+def contenido_zip(ruta, prefijo=''):
+    """(tablas, manifiesto). Entra a los zip anidados."""
+    tablas, manifiesto = [], []
+    with zipfile.ZipFile(ruta) as z:
+        for info in z.infolist():
+            if info.is_dir():
+                continue
+            n = info.filename
+            kb = info.file_size // 1024
+            manifiesto.append(f'{prefijo}{n}  ({kb} KB)')
+            bajo = n.lower()
+            if bajo.endswith('.zip'):
+                anid = io.BytesIO(z.read(n))
+                try:
+                    with zipfile.ZipFile(anid) as z2:
+                        for i2 in z2.infolist():
+                            if i2.is_dir():
+                                continue
+                            manifiesto.append(f'{prefijo}  {n}/{i2.filename} '
+                                              f'({i2.file_size // 1024} KB)')
+                            if i2.filename.lower().endswith(TABULARES):
+                                tablas += leer_tabla(io.BytesIO(z2.read(i2.filename)),
+                                                     i2.filename)
+                except Exception as e:
+                    print(f'    ! {n}: {e}')
+            elif bajo.endswith(TABULARES):
+                tablas += leer_tabla(io.BytesIO(z.read(n)), n)
+    return tablas, manifiesto
+
+
+def tablas_de(ruta):
+    """Devuelve (DataFrames, manifiesto de lo que había dentro)."""
     if ruta.lower().endswith('.zip'):
-        salida = []
-        with zipfile.ZipFile(ruta) as z:
-            for n in z.namelist():
-                if n.lower().endswith(('.csv', '.xlsx', '.xls')):
-                    salida += leer(io.BytesIO(z.read(n)), n)
-        return salida
+        return contenido_zip(ruta)
     if ruta.lower().endswith('.rar'):
         sys.exit('Archivo .rar: descomprímelo antes.\n'
                  '  sudo apt-get install -y unrar-free && unrar-free -x <archivo>')
     with open(ruta, 'rb') as f:
-        return leer(io.BytesIO(f.read()), ruta)
+        return leer_tabla(io.BytesIO(f.read()), ruta), [os.path.basename(ruta)]
 
 
 def columna(d, *patrones):
@@ -204,17 +241,23 @@ def main():
             print(f'  ! {u}: {e}')
 
     filas = {}
+    manifiestos = []
     for ruta in rutas:
         print(f'\nLeyendo {os.path.basename(ruta)}')
-        for d in tablas_de(ruta):
-            col_rbd = columna(d, r'^rbd$', r'\brbd\b')
+        tablas, manifiesto = tablas_de(ruta)
+        manifiestos += manifiesto
+        print(f'  {len(manifiesto)} archivos dentro, {len(tablas)} tablas legibles')
+        for d in tablas:
+            col_rbd = columna(d, r'^rbd$', r'\brbd\b', r'cod.*ee|id.*establec')
             if not col_rbd:
+                print(f'    (sin columna RBD) columnas: {list(d.columns)[:12]}')
                 continue
             # 4º básico es el nivel donde JUMP Math tiene producto
             col_mate = columna(d, r'mate.*4b|4b.*mate', r'prom.*mate', r'matem')
             col_cat = columna(d, r'categor')
             col_anio = columna(d, r'^a[gñn]o|periodo|year')
             if not col_mate and not col_cat:
+                print(f'    (sin matemática ni categoría) columnas: {list(d.columns)[:12]}')
                 continue
             print(f'  columnas: rbd={col_rbd} mate={col_mate} categoria={col_cat}')
 
@@ -245,7 +288,15 @@ def main():
 
     if not filas:
         print('\nNo se pudo extraer ningún RBD con datos de matemática.')
-        print('Revisa las columnas del archivo y vuelve a intentar.')
+        if manifiestos:
+            print(f'\nContenido de lo descargado ({len(manifiestos)} archivos):')
+            for m in manifiestos[:60]:
+                print(f'  {m}')
+            if len(manifiestos) > 60:
+                print(f'  … y {len(manifiestos) - 60} más')
+            print('\nSi los datos vienen en un formato que pandas no lee '
+                  '(.sav, .dta, .sas7bdat),')
+            print('conviértelos o pídeme el lector que corresponda.')
         return
 
     os.makedirs(DATOS, exist_ok=True)
