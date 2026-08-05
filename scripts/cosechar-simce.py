@@ -173,8 +173,49 @@ def ultimo(valor):
     return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode().lower()
 
 
-def es_matematica(valor):
+# En el grafo las dimensiones son códigos: .../def/asignatura/2. El
+# nombre está en los .ttl que acompañan a los datos, así que el
+# diccionario se lee de ahí en vez de suponer qué número es matemática.
+RE_SUJETO = re.compile(r'<([^>]*/def/(\w+)/(\d+))>')
+RE_ETIQUETA = re.compile(r'(?:rdfs:label|skos:prefLabel|:label|'
+                         r'<[^>]*(?:label|prefLabel)>)\s+"([^"]+)"')
+
+
+def mapa_codigos(directorio, dimension='asignatura', limite_mb=40):
+    """{código: etiqueta} leído de los .ttl/.jsonld del paquete."""
+    mapa = {}
+    for raiz, _, archivos in os.walk(directorio):
+        for nombre in sorted(archivos):
+            if not nombre.lower().endswith(('.ttl', '.jsonld', '.nt', '.rdf')):
+                continue
+            ruta = os.path.join(raiz, nombre)
+            sujeto = None
+            leidos = 0
+            try:
+                with open(ruta, encoding='utf-8', errors='ignore') as f:
+                    for linea in f:
+                        leidos += len(linea)
+                        if leidos > limite_mb * 1024 * 1024:
+                            break            # las definiciones van al inicio
+                        s = RE_SUJETO.search(linea)
+                        if s and s.group(2) == dimension:
+                            sujeto = int(s.group(3))
+                        if sujeto is not None:
+                            e = RE_ETIQUETA.search(linea)
+                            if e:
+                                mapa.setdefault(sujeto, e.group(1).strip())
+                                sujeto = None
+            except Exception:
+                continue
+    return mapa
+
+
+def es_matematica(valor, codigos=None):
     v = ultimo(valor)
+    if v.isdigit():
+        # Sin diccionario no se puede decidir por número: mejor no
+        # cruzar nada que cruzar la asignatura equivocada.
+        return int(v) in codigos if codigos else False
     return 'matem' in v or v in ('mat', 'mate', 'mt')
 
 
@@ -184,7 +225,7 @@ def es_cuarto_basico(grado):
     return bool(re.search(r'(^|\D)0?4(\D|$)', g)) if g else True
 
 
-def extraer_jsonld_stream(ruta, base, filas, fuente):
+def extraer_jsonld_stream(ruta, base, filas, fuente, codigos_mate=None):
     """Recorre el JSON-LD sin cargarlo entero.
 
     La base de establecimientos son 366 MB de RDF: json.load la
@@ -211,7 +252,8 @@ def extraer_jsonld_stream(ruta, base, filas, fuente):
 
     for camino in candidatas:
         muestras = {}
-        vistos, leidos = _recorrer(ijson, ruta, camino, base, filas, fuente, muestras)
+        vistos, leidos = _recorrer(ijson, ruta, camino, base, filas, fuente,
+                                   muestras, codigos_mate)
         if leidos:
             print(f'    ruta JSON "{camino}": {leidos} nodos recorridos, '
                   f'{vistos} de matemática 4º básico cruzados con la base')
@@ -230,7 +272,8 @@ def extraer_jsonld_stream(ruta, base, filas, fuente):
     return len(filas)
 
 
-def _recorrer(ijson, ruta, camino, base, filas, fuente, muestras=None):
+def _recorrer(ijson, ruta, camino, base, filas, fuente, muestras=None,
+              codigos_mate=None):
     """muestras: dict clave -> valores distintos observados, para diagnóstico."""
     vistos = leidos = 0
     with open(ruta, 'rb') as f:
@@ -250,7 +293,7 @@ def _recorrer(ijson, ruta, camino, base, filas, fuente, muestras=None):
                     if len(s) < 8:
                         s.add(str(v)[:70])
 
-            if not es_matematica(campos.get('asignatura')):
+            if not es_matematica(campos.get('asignatura'), codigos_mate):
                 continue
             if not es_cuarto_basico(campos.get('grado')):
                 continue
@@ -493,9 +536,21 @@ def main():
         print(f'  {len(manifiesto)} archivos dentro, {len(tablas)} tablas legibles'
               + (f', {len(grandes)} en streaming' if grandes else ''))
 
+        codigos_mate = None
+        if grandes:
+            mapa = mapa_codigos(os.path.join(CACHE, 'extraido'))
+            if mapa:
+                print(f'  diccionario de asignaturas: {mapa}')
+                codigos_mate = {n for n, l in mapa.items()
+                                if 'matem' in ultimo(l)}
+                print(f'  códigos de matemática: {codigos_mate or "ninguno"}')
+            else:
+                print('  ! no se encontró el diccionario de asignaturas en los .ttl')
+
         for g in grandes:
             print(f'  recorriendo {os.path.basename(g)}')
-            if extraer_jsonld_stream(g, base, filas, os.path.basename(g)) is None:
+            if extraer_jsonld_stream(g, base, filas, os.path.basename(g),
+                                     codigos_mate) is None:
                 print('    ! falta ijson para leerlo sin agotar la memoria:')
                 print('      pip install --break-system-packages ijson')
         for d in tablas:
