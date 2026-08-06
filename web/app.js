@@ -802,13 +802,15 @@ $('cuerpo-campanas').addEventListener('click', (e) => {
   if (b) abrirDetalle(b.dataset.abrir);
 });
 
-$('conectar-gmail').addEventListener('click', async () => {
+async function conectar(leer) {
   try {
-    const correo = await mail.conectarGmail(auth);
-    pintarEstadoGmail(correo);
+    const r = await mail.conectarGmail(auth, { leer });
+    pintarEstadoGmail(r.correo, r.leer);
     limpiarError();
   } catch (e) { mostrarError(e); }
-});
+}
+$('conectar-gmail').addEventListener('click', () => conectar(true));
+$('conectar-solo-envio').addEventListener('click', () => conectar(false));
 
 /* La casilla de aperturas sólo sirve si la función está desplegada.
    Preguntar por ella evita una opción que promete algo que no ocurre. */
@@ -833,13 +835,17 @@ async function comprobarSeguimiento() {
   }
 }
 
-function pintarEstadoGmail(correo) {
+function pintarEstadoGmail(correo, conLectura) {
   const caja = $('gmail-estado');
-  if (correo) {
-    caja.classList.add('ok');
-    caja.innerHTML = `<div><strong>Gmail conectado:</strong> ${esc(correo)}.
-      Los correos saldrán desde esta cuenta. La sesión dura una hora.</div>`;
-  }
+  if (!correo) return;
+  caja.classList.add('ok');
+  caja.innerHTML = `<div><strong>Gmail conectado:</strong> ${esc(correo)}.
+    Los correos saldrán desde esta cuenta. La sesión dura una hora.`
+    + (conLectura
+      ? ' Se detectarán respuestas y rebotes automáticamente.</div>'
+      : ' <em>Sin permiso de lectura: las respuestas habrá que revisarlas '
+        + 'a mano en la bandeja.</em></div>');
+  $('d-revisar').disabled = !conLectura;
 }
 
 for (const [id, fn] of [
@@ -874,6 +880,11 @@ $('d-volver').addEventListener('click', () => { irA('campanas'); pintarCampanas(
 
 $('d-revisar').addEventListener('click', async () => {
   if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail para revisar respuestas.' }); return; }
+  if (!mail.puedeLeer()) {
+    mostrarError({ message: 'La conexión actual sólo permite enviar. Vuelve a '
+      + 'conectar con "Conectar Gmail" para detectar respuestas.' });
+    return;
+  }
   $('d-revisar').disabled = true;
   try {
     const r = await mail.revisarRespuestas(db, estado.campanaActual.id);

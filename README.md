@@ -195,6 +195,45 @@ bash scripts/build-prospectos.sh
 
 Los teléfonos y correos se recogieron de fuentes públicas en agosto de 2026. Los marcados `MEDIA` y `BAJA` conviene confirmarlos en la primera llamada; los cargos de directores ejecutivos de SLEP rotan y hay que validarlos en `dep.gob.cl` antes de dirigir una carta.
 
+## Habilitar el envío de correo
+
+El código está desplegado, pero enviar por Gmail requiere tres cosas en Google Cloud que no se configuran solas.
+
+### 1. Habilitar la API de Gmail
+
+```bash
+gcloud services enable gmail.googleapis.com --project jmventas-aab3c
+```
+
+### 2. Declarar los permisos en la pantalla de consentimiento
+
+Console → **APIs y servicios → Pantalla de consentimiento OAuth** → agregar:
+
+| Permiso | Nivel según Google | Para qué |
+|---|---|---|
+| `.../auth/gmail.send` | Sensible | Enviar los correos |
+| `.../auth/gmail.readonly` | **Restringido** | Detectar respuestas y rebotes |
+
+La diferencia importa. Un permiso **restringido** en una app de tipo *External* publicada obliga a una auditoría de seguridad CASA, que cuesta dinero y semanas. Hay dos formas de evitarla:
+
+- **Cuenta Google Workspace** → tipo de usuario **Internal**. Sin verificación, sin advertencias, sin límite de usuarios. Es la opción correcta si JUMP Math tiene dominio propio.
+- **Cuenta @gmail.com corriente** → dejar la app en **Testing** y agregar las cuentas del equipo como *usuarios de prueba*. Funciona hasta 100 usuarios, con una pantalla de advertencia al conectar. Suficiente para un equipo comercial.
+
+Si ninguna de las dos calza, el botón **"Solo enviar"** conecta pidiendo únicamente `gmail.send`, que es sensible y no restringido. Se pierde la detección automática de respuestas —hay que mirarlas en la bandeja— pero el envío funciona sin trámite.
+
+### 3. Habilitar el proveedor Google
+
+Console de Firebase → **Authentication → Sign-in method → Google → Habilitar**. Sin esto nadie entra a la app, ni siquiera a ver la base.
+
+### Límites de envío
+
+| Cuenta | Correos por día |
+|---|---:|
+| Gmail personal | 500 |
+| Workspace | 2.000 |
+
+La app corta en 450 por tanda y deja el resto pendiente, reanudable desde el detalle de la campaña.
+
 ## Lo que falta
 
 - **Cruce con SIMCE Matemática y Categoría de Desempeño** (`informacionestadistica.agenciaeducacion.cl`). Convierte la base en "colegios con problema de matemática documentado" y es lo que más sube la tasa de respuesta.

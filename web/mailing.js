@@ -58,15 +58,21 @@ export const VARIABLES = {
 };
 
 // ---------- sesión de Gmail ----------
-const sesion = { token: null, correo: null, expira: 0 };
+const sesion = { token: null, correo: null, expira: 0, permisos: [] };
 
 export const gmailConectado = () => Boolean(sesion.token) && Date.now() < sesion.expira;
 export const gmailCorreo = () => sesion.correo;
+export const puedeEnviar = () => sesion.permisos.includes(GMAIL_ENVIAR);
+/* Leer el buzón es un permiso "restringido" para Google: una app externa
+   que lo pida necesita auditoría de seguridad. Enviar es sólo "sensible".
+   Por eso se puede conectar sin él y quedarse sin detección de
+   respuestas, en vez de que ese trámite bloquee todo el envío. */
+export const puedeLeer = () => sesion.permisos.includes(GMAIL_LEER);
 
-export async function conectarGmail(auth) {
+export async function conectarGmail(auth, { leer = true } = {}) {
   const proveedor = new GoogleAuthProvider();
   proveedor.addScope(GMAIL_ENVIAR);
-  proveedor.addScope(GMAIL_LEER);
+  if (leer) proveedor.addScope(GMAIL_LEER);
   proveedor.setCustomParameters({ prompt: 'consent select_account' });
 
   const res = await signInWithPopup(auth, proveedor);
@@ -79,7 +85,28 @@ export async function conectarGmail(auth) {
   // Los tokens de Google duran una hora; se descuenta un minuto para no
   // quedar a medio envío con un token recién vencido.
   sesion.expira = Date.now() + 59 * 60 * 1000;
-  return sesion.correo;
+
+  /* Google puede conceder menos de lo pedido: en la pantalla de consentimiento
+     el usuario desmarca permisos uno por uno. Preguntar qué quedó concedido
+     evita ofrecer una función que va a fallar recién al usarla. */
+  sesion.permisos = await permisosDelToken(sesion.token);
+  if (!puedeEnviar()) {
+    sesion.token = null;
+    throw new Error('No se concedió el permiso para enviar correo. '
+      + 'Vuelve a conectar y deja marcada la casilla de envío.');
+  }
+  return { correo: sesion.correo, leer: puedeLeer() };
+}
+
+async function permisosDelToken(token) {
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(token)}`);
+    if (!r.ok) return [];
+    return String((await r.json()).scope || '').split(/\s+/).filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 async function gmail(ruta, opciones = {}) {
