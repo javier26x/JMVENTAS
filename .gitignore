@@ -30,3 +30,5 @@ datos/contactos-oficiales.csv
 
 # Descargas del Simce: se vuelven a bajar solas
 .cache-simce/
+
+functions/node_modules/

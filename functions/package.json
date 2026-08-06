@@ -1,8 +1,10 @@
 {
   "name": "jmventas-functions",
-  "description": "Seguimiento de aperturas y clics de las campañas",
+  "description": "Seguimiento de aperturas y clics de las campa\u00f1as",
   "main": "index.js",
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "22"
+  },
   "dependencies": {
     "firebase-admin": "^13.6.0",
     "firebase-functions": "^6.5.0"
