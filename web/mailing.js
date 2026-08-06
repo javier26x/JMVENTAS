@@ -153,7 +153,10 @@ const MARCA = {
   rojo: '#e8443a',
   fondo: '#eef1f5',
   logo: '/img/logo-jumpmath.png',
-  firma: '/img/firma-macarena.png',
+  /* Gmail sirve las imágenes desde su propio proxy y las cachea por URL.
+     Al cambiar el archivo hay que cambiar la versión, o los envíos nuevos
+     siguen mostrando la firma antigua. */
+  firma: '/img/firma-macarena.png?v=2',
   firmante: 'Macarena Bascour F.',
   cargo: 'Directora · JUMP Math Chile',
 };
