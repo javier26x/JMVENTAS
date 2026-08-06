@@ -154,8 +154,8 @@ const MARCA = {
   fondo: '#eef1f5',
   logo: '/img/logo-jumpmath.png',
   firma: '/img/firma-macarena.png',
-  firmante: 'Macarena Bascour',
-  cargo: 'JUMP Math Chile',
+  firmante: 'Macarena Bascour F.',
+  cargo: 'Directora · JUMP Math Chile',
 };
 
 /**
@@ -262,18 +262,22 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
       </td></tr>
       <tr><td style="padding:12px 30px 0;font-family:Arial,sans-serif;font-size:12px;
         color:#8a93a3">Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
-        &nbsp;·&nbsp; Presente en Canadá, EE.&nbsp;UU. y España</td></tr>
+        &nbsp;·&nbsp; Canadá, EE.&nbsp;UU. y España</td></tr>
       <tr><td style="padding:14px 30px 6px;font-family:Arial,sans-serif;
         font-size:15px;line-height:1.65;color:#333333">${cuerpo}</td></tr>
       <tr><td style="padding:12px 30px 4px">${botonWa}</td></tr>
-      <tr><td style="padding:12px 30px 6px">
-        <img src="${base}${MARCA.firma}" width="185" alt="${escaparHtml(MARCA.firmante)}"
-             style="display:block;border:0;max-width:185px">
-        <div style="font-family:Arial,sans-serif;font-size:14px;font-weight:bold;
-          color:${MARCA.navy};padding-top:6px">${escaparHtml(MARCA.firmante)}</div>
-        <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84">${escaparHtml(MARCA.cargo)}</div>
+      <tr><td style="padding:16px 30px 0">
+        <div style="border-top:1px solid #e6e9ef;font-size:0">&nbsp;</div>
+      </td></tr>
+      <tr><td style="padding:10px 30px 6px">
+        <img src="${base}${MARCA.firma}" width="200" alt="${escaparHtml(MARCA.firmante)}"
+             style="display:block;border:0;max-width:200px">
+        <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:bold;
+          color:${MARCA.navy};padding-top:8px">${escaparHtml(MARCA.firmante)}</div>
+        <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84;
+          padding-top:1px">${escaparHtml(MARCA.cargo)}</div>
         ${contactoFirma ? `<div style="font-family:Arial,sans-serif;font-size:12px;
-          color:#5a6b84;padding-top:6px">${contactoFirma}</div>` : ''}
+          color:#5a6b84;padding-top:8px">${contactoFirma}</div>` : ''}
       </td></tr>
       <tr><td style="padding:6px 30px 26px;font-family:Arial,sans-serif;font-size:13px;
         line-height:1.55;color:#333333"><b>PD:</b> los programas que parten con el año
