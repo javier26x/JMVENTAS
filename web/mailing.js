@@ -330,6 +330,24 @@ async function marcar(db, campanaId, rbd, datos) {
     datos, { merge: true });
 }
 
+/** Envía el correo a la propia cuenta conectada, con los datos de un
+ *  destinatario real ya reemplazados. No toca la campaña ni el CRM. */
+export async function enviarPrueba(campana, prospecto, ctx) {
+  const asunto = aplicarVariables(campana.asunto, prospecto, ctx);
+  const texto = aplicarVariables(campana.cuerpo, prospecto, ctx);
+  const html = cuerpoHtml(texto, { base: location.origin, track: false });
+  await gmail('/messages/send', {
+    method: 'POST',
+    body: JSON.stringify({
+      raw: mensajeCrudo({
+        para: gmailCorreo(),
+        asunto: `[PRUEBA] ${asunto}`,
+        html, texto, de: gmailCorreo(),
+      }),
+    }),
+  });
+}
+
 // ---------- respuestas y rebotes ----------
 /**
  * Revisa cada hilo enviado y marca los que tienen respuesta o rebote.

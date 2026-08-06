@@ -874,6 +874,25 @@ $('c-guardar').addEventListener('click', async () => {
   } catch (e) { mostrarError(e); }
 });
 
+/* Antes de escribirle a un colegio real conviene ver el correo como le
+   va a llegar: en su cliente, con las variables resueltas y el remitente
+   puesto. La vista previa del editor no muestra cómo lo trata Gmail. */
+$('c-prueba').addEventListener('click', async () => {
+  if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail primero.' }); return; }
+  const ejemplo = estado.destinatarios[0];
+  if (!ejemplo) { mostrarError({ message: 'El segmento no tiene destinatarios.' }); return; }
+
+  $('c-prueba').disabled = true;
+  try {
+    await mail.enviarPrueba(
+      { asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value },
+      ejemplo, { promedio: PROMEDIO_MATE });
+    progreso(`Prueba enviada a ${mail.gmailCorreo()} con los datos de `
+      + `${ejemplo.establecimiento}. Revísala antes de enviar la campaña.`);
+    limpiarError();
+  } catch (e) { mostrarError(e); } finally { $('c-prueba').disabled = false; }
+});
+
 $('c-enviar').addEventListener('click', enviar);
 $('c-volver').addEventListener('click', () => { irA('campanas'); pintarCampanas(); });
 $('d-volver').addEventListener('click', () => { irA('campanas'); pintarCampanas(); });
