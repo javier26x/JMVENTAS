@@ -191,11 +191,6 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   const anio = prospecto?.simceAnio || '';
   const brecha = Number.isFinite(simce) ? Math.round((ctx?.promedio || 253) - simce) : null;
 
-  // "del Colegio…" pero "de la Escuela…": el artículo depende del nombre.
-  const primera = String(prospecto?.establecimiento || '').trim().split(/\s+/)[0]?.toLowerCase() || '';
-  const articulo = primera === 'escuela' ? 'de la'
-    : ['colegio', 'liceo', 'instituto', 'complejo', 'centro'].includes(primera) ? 'del' : 'de';
-
   /* WhatsApp con el mensaje ya escrito y el colegio adentro: el director
      toca el botón y el chat llega auto-identificado. */
   const dig = String(ctx?.whatsapp || '').replace(/\D/g, '');
@@ -292,7 +287,9 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   ].filter(Boolean).join('');
 
   return `<!doctype html>
-<html><body style="margin:0;padding:0;background:${MARCA.fondo}">
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:${MARCA.fondo}">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
   Una oportunidad concreta para matemática en ${colegio || 'su establecimiento'} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
 </div>
@@ -309,8 +306,9 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
 
       <tr>
         <td style="padding:18px 6px 0 32px;${f}" valign="top">
-          ${comuna ? `<div style="font-size:12px;font-weight:bold;letter-spacing:.09em;
-            text-transform:uppercase;color:${MARCA.rojo}">${comuna}</div>` : ''}
+          <div style="font-size:12px;font-weight:bold;letter-spacing:.09em;
+            text-transform:uppercase;color:${MARCA.rojo}">${colegio}${comuna
+    ? `&nbsp;&nbsp;<span style="color:#8a93a3;font-weight:normal">·&nbsp;&nbsp;${comuna}</span>` : ''}</div>
           <div style="font-size:25px;line-height:1.25;font-weight:bold;color:${MARCA.navy};
             padding:6px 0 2px">Una oportunidad concreta para seguir mejorando</div>
           <div style="font-size:22px;line-height:1.3;color:${MARCA.navy}">en Matemática 4º básico.</div>
@@ -322,8 +320,7 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
       </tr>
 
       <tr><td colspan="2" style="padding:14px 32px 14px;${f};font-size:15px;color:#333333">
-        Estimado equipo directivo ${articulo}<br>
-        <b style="color:${MARCA.navy}">${colegio}</b>,
+        Estimado equipo directivo:
       </td></tr>
 
       ${tarjetaSimce ? `<tr><td colspan="2" style="padding:0 32px 16px">${tarjetaSimce}</td></tr>` : ''}
@@ -418,13 +415,38 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
 /** RFC 2822 en base64url, que es lo que espera la API de Gmail. */
 function mensajeCrudo({ para, asunto, html, texto, de }) {
   const limite = `lim_${Math.random().toString(36).slice(2)}`;
-  const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+  const b64 = (s) => {
+    const bytes = new TextEncoder().encode(s);
+    let bin = '';
+    for (const x of bytes) bin += String.fromCharCode(x);
+    return btoa(bin);
+  };
+  // RFC 2045: el base64 del cuerpo va en lineas de hasta 76 columnas. Una
+  // sola linea de miles de caracteres viola el largo maximo de linea de
+  // correo y hay agentes que al repararla pierden metadatos por el camino.
+  const plegar = (s) => s.replace(/(.{76})/g, '$1\r\n').replace(/\r\n$/, '');
+
+  /* Una palabra codificada MIME admite 75 caracteres como maximo: un
+     asunto con nombre de colegio la excede y queda a merced de como cada
+     servidor la repare. Se parte en trozos legales, cuidando no cortar un
+     caracter multibyte por la mitad. */
+  const asuntoMime = (s) => {
+    const trozos = [];
+    let actual = '';
+    for (const ch of String(s)) {
+      if (new TextEncoder().encode(actual + ch).length > 42) {
+        trozos.push(actual);
+        actual = ch;
+      } else actual += ch;
+    }
+    if (actual) trozos.push(actual);
+    return trozos.map((t) => `=?UTF-8?B?${b64(t)}?=`).join('\r\n ');
+  };
+
   const cabeceras = [
     `From: ${de}`,
     `To: ${para}`,
-    // El asunto puede traer tildes y ñ: MIME encoded-word evita que
-    // llegue con caracteres rotos.
-    `Subject: =?UTF-8?B?${b64(asunto)}?=`,
+    `Subject: ${asuntoMime(asunto)}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${limite}"`,
   ].join('\r\n');
@@ -432,10 +454,10 @@ function mensajeCrudo({ para, asunto, html, texto, de }) {
   const cuerpo = [
     '', `--${limite}`,
     'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64', '', b64(texto),
+    'Content-Transfer-Encoding: base64', '', plegar(b64(texto)),
     `--${limite}`,
     'Content-Type: text/html; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64', '', b64(html),
+    'Content-Transfer-Encoding: base64', '', plegar(b64(html)),
     `--${limite}--`,
   ].join('\r\n');
 
