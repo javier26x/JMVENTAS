@@ -145,20 +145,99 @@ const saline = (s, buscar, reemplazo) => s.split(buscar).join(reemplazo);
 const escaparHtml = (s) => String(s ?? '').replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** Texto plano -> HTML, con pixel y clics reescritos si hay seguimiento. */
-function cuerpoHtml(texto, { base, campanaId, rbd, track }) {
-  let html = escaparHtml(texto).replace(/\n/g, '<br>');
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+/* Identidad del correo. El logo y la firma viven en Hosting, así que los
+   clientes los cargan por URL absoluta. Para usar el logotipo oficial
+   basta reemplazar web/img/logo-jumpmath.png y volver a desplegar. */
+const MARCA = {
+  navy: '#14345c',
+  rojo: '#e8443a',
+  fondo: '#eef1f5',
+  logo: '/img/logo-jumpmath.png',
+  firma: '/img/firma-macarena.png',
+  firmante: 'Macarena Bascour',
+  cargo: 'JUMP Math Chile',
+};
+
+/**
+ * El correo completo como pieza diseñada, pero construida en HTML.
+ *
+ * A propósito NO es una imagen con el texto adentro: los correos
+ * imagen-sin-texto puntúan alto en los filtros de spam, y Outlook —común
+ * en colegios— bloquea imágenes por defecto, con lo que el destinatario
+ * vería un rectángulo vacío. Acá el nombre del colegio y su SIMCE son
+ * texto real con aspecto de lámina: llegan aunque las imágenes no.
+ * Tablas e estilos en línea porque es lo único que respetan los clientes
+ * de correo.
+ */
+export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track }) {
+  let cuerpo = escaparHtml(texto).replace(/\n/g, '<br>');
+  cuerpo = cuerpo.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
     const destino = track
       ? `${base}/t/c/${campanaId}/${rbd}?u=${encodeURIComponent(url)}`
       : url;
-    return `<a href="${destino}">${url}</a>`;
+    return `<a href="${destino}" style="color:${MARCA.navy}">${url}</a>`;
   });
   const pixel = track
     ? `<img src="${base}/t/o/${campanaId}/${rbd}" width="1" height="1" alt="" style="display:none">`
     : '';
-  return `<div style="font:15px/1.6 system-ui,-apple-system,'Segoe UI',sans-serif;color:#111">`
-    + `${html}</div>${pixel}`;
+
+  const colegio = escaparHtml(titulo(prospecto?.establecimiento || ''));
+  const comuna = escaparHtml(titulo(prospecto?.comuna || ''));
+  const simce = Number(prospecto?.simceMate);
+  const anio = prospecto?.simceAnio || '';
+  const brecha = Number.isFinite(simce) ? Math.round((ctx?.promedio || 253) - simce) : null;
+
+  const tarjetaSimce = Number.isFinite(simce) ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f2f6fc;border-left:4px solid ${MARCA.rojo};border-radius:0 8px 8px 0">
+      <tr>
+        <td style="padding:14px 18px;font-family:Arial,sans-serif">
+          <span style="font-size:30px;font-weight:bold;color:${MARCA.navy}">${Math.round(simce)}</span>
+          <span style="font-size:13px;color:#5a6b84">&nbsp;puntos · SIMCE Matemática 4º básico${anio ? ` ${escaparHtml(anio)}` : ''}</span>
+          ${brecha > 0 ? `<div style="font-size:13px;color:${MARCA.rojo};font-weight:bold;padding-top:2px">
+            ${brecha} puntos bajo el promedio nacional (${ctx?.promedio || 253})</div>` : ''}
+        </td>
+      </tr>
+    </table>` : '';
+
+  return `<!doctype html>
+<html><body style="margin:0;padding:0;background:${MARCA.fondo}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
+  <tr><td align="center" style="padding:26px 12px">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+           style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden">
+      <tr><td style="height:5px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
+      <tr><td style="padding:22px 30px 6px">
+        <img src="${base}${MARCA.logo}" width="170" alt="JUMP Math Chile"
+             style="display:block;border:0;max-width:170px">
+      </td></tr>
+      <tr><td style="padding:16px 30px 4px;font-family:Arial,sans-serif">
+        ${comuna ? `<div style="font-size:12px;font-weight:bold;letter-spacing:.09em;
+          text-transform:uppercase;color:${MARCA.rojo}">${comuna}</div>` : ''}
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:1.25;
+          color:${MARCA.navy};padding:4px 0 14px">${colegio}</div>
+        ${tarjetaSimce}
+      </td></tr>
+      <tr><td style="padding:18px 30px 6px;font-family:Arial,sans-serif;
+        font-size:15px;line-height:1.65;color:#333333">${cuerpo}</td></tr>
+      <tr><td style="padding:16px 30px 28px">
+        <img src="${base}${MARCA.firma}" width="185" alt="${escaparHtml(MARCA.firmante)}"
+             style="display:block;border:0;max-width:185px">
+        <div style="font-family:Arial,sans-serif;font-size:14px;font-weight:bold;
+          color:${MARCA.navy};padding-top:6px">${escaparHtml(MARCA.firmante)}</div>
+        <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84">${escaparHtml(MARCA.cargo)}</div>
+      </td></tr>
+    </table>
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%">
+      <tr><td style="padding:14px 20px;font-family:Arial,sans-serif;font-size:11px;
+        line-height:1.5;color:#8a93a3" align="center">
+        Le escribimos porque ${colegio || 'su establecimiento'} figura en el directorio público
+        de establecimientos de MINEDUC.<br>
+        Si prefiere no recibir más información, responda este correo con la palabra BAJA.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>${pixel}</body></html>`;
 }
 
 /** RFC 2822 en base64url, que es lo que espera la API de Gmail. */
@@ -285,7 +364,8 @@ export async function enviarCampana(db, campana, destinatarios, ctx, alAvanzar) 
     const prospecto = ctx.prospectos.get(String(d.rbd)) || d;
     const asunto = aplicarVariables(campana.asunto, prospecto, ctx);
     const texto = aplicarVariables(campana.cuerpo, prospecto, ctx);
-    const html = cuerpoHtml(texto, {
+    const html = correoHtml({
+      texto, prospecto, ctx,
       base, campanaId: campana.id, rbd: d.rbd, track: campana.track,
     });
 
@@ -335,7 +415,7 @@ async function marcar(db, campanaId, rbd, datos) {
 export async function enviarPrueba(campana, prospecto, ctx) {
   const asunto = aplicarVariables(campana.asunto, prospecto, ctx);
   const texto = aplicarVariables(campana.cuerpo, prospecto, ctx);
-  const html = cuerpoHtml(texto, { base: location.origin, track: false });
+  const html = correoHtml({ texto, prospecto, ctx, base: location.origin, track: false });
   await gmail('/messages/send', {
     method: 'POST',
     body: JSON.stringify({

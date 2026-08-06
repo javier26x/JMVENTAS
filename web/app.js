@@ -665,15 +665,14 @@ function abrirEditorDesdeSegmento() {
   abrirEditor();
 }
 
-const PLANTILLA = `Estimado equipo directivo de {{establecimiento}}:
-
-Los resultados SIMCE de Matemática 2025 sitúan a {{establecimiento}} en {{simce}} puntos, {{brecha}} bajo el promedio de {{promedio}} de los establecimientos del país.
+/* El encabezado del correo ya muestra el colegio y su SIMCE en grande,
+   así que el cuerpo no repite el dato: queda corto y va directo a la
+   propuesta. La firma manuscrita cierra en lugar del "quedo atento". */
+const PLANTILLA = `Estimado equipo directivo:
 
 JUMP Math es un método de enseñanza de la matemática con evidencia de impacto en estudios controlados. No reemplaza al profesor: le entrega una secuencia de clases estructurada que descompone cada objetivo en pasos que todo el curso puede seguir.
 
-¿Tendrían 30 minutos para una reunión y les muestro cómo funcionaría en {{comuna}}?
-
-Quedo atento,`;
+¿Tendrían 30 minutos para una reunión? Me encantaría mostrarles cómo funcionaría en {{comuna}}.`;
 
 function abrirEditor() {
   const c = estado.campanaActual;
@@ -711,13 +710,22 @@ function resumenSegmento() {
 
 function previsualizar() {
   const ejemplo = estado.destinatarios[0];
-  if (!ejemplo) { $('previsualizacion').textContent = 'Sin destinatarios en el segmento.'; return; }
+  const caja = $('previsualizacion');
+  if (!ejemplo) { caja.textContent = 'Sin destinatarios en el segmento.'; return; }
   const ctx = { promedio: PROMEDIO_MATE };
-  $('previsualizacion').innerHTML =
-    `<span class="asunto">${esc(mail.aplicarVariables($('c-asunto').value, ejemplo, ctx))}</span>`
-    + esc(mail.aplicarVariables($('c-cuerpo').value, ejemplo, ctx))
-    + `<div class="sub" style="margin-top:10px">Para: ${esc(mail.primerCorreo(ejemplo.email))} · `
-    + `${esc(ejemplo.establecimiento)}</div>`;
+  const asunto = mail.aplicarVariables($('c-asunto').value, ejemplo, ctx);
+  const texto = mail.aplicarVariables($('c-cuerpo').value, ejemplo, ctx);
+
+  caja.innerHTML = `<span class="asunto">${esc(asunto)}</span>`
+    + `<div class="sub">Para: ${esc(mail.primerCorreo(ejemplo.email))} · ${esc(ejemplo.establecimiento)}</div>`;
+  // El correo real es un documento completo con sus propios estilos: se
+  // muestra en un iframe para que no choque con los de la app.
+  const marco = document.createElement('iframe');
+  marco.style.cssText = 'width:100%;height:460px;border:0;border-radius:8px;margin-top:8px;background:#eef1f5';
+  marco.srcdoc = mail.correoHtml({
+    texto, prospecto: ejemplo, ctx, base: location.origin, track: false,
+  });
+  caja.appendChild(marco);
 }
 
 async function pintarCampanas() {
