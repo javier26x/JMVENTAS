@@ -170,12 +170,13 @@ const MARCA = {
  * de correo.
  */
 export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track }) {
-  /* Todo enlace del correo pasa por el registro de clics cuando hay
-     seguimiento: un clic en el botón de WhatsApp es la señal de compra
-     más fuerte que produce esta pieza. */
+  /* Todo enlace pasa por el registro de clics cuando hay seguimiento: un
+     clic en el botón de WhatsApp es la señal de compra más fuerte que
+     produce esta pieza. */
   const enlace = (url) => (track
     ? `${base}/t/c/${campanaId}/${rbd}?u=${encodeURIComponent(url)}`
     : url);
+  const img = (nombre) => `${base}/img/${nombre}.png`;
 
   let cuerpo = escaparHtml(texto).replace(/\n/g, '<br>');
   cuerpo = cuerpo.replace(/(https?:\/\/[^\s<]+)/g,
@@ -190,106 +191,224 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   const anio = prospecto?.simceAnio || '';
   const brecha = Number.isFinite(simce) ? Math.round((ctx?.promedio || 253) - simce) : null;
 
+  // "del Colegio…" pero "de la Escuela…": el artículo depende del nombre.
+  const primera = String(prospecto?.establecimiento || '').trim().split(/\s+/)[0]?.toLowerCase() || '';
+  const articulo = primera === 'escuela' ? 'de la'
+    : ['colegio', 'liceo', 'instituto', 'complejo', 'centro'].includes(primera) ? 'del' : 'de';
+
   /* WhatsApp con el mensaje ya escrito y el colegio adentro: el director
-     toca el botón y el chat llega auto-identificado. Es el paso de menor
-     fricción posible entre leer y contactar. */
+     toca el botón y el chat llega auto-identificado. */
   const dig = String(ctx?.whatsapp || '').replace(/\D/g, '');
   const waNum = dig.length === 9 && dig.startsWith('9') ? `56${dig}` : dig;
   const wa = waNum.length >= 11
     ? `https://wa.me/${waNum}?text=${encodeURIComponent(
       `Hola, le escribo de ${titulo(prospecto?.establecimiento || 'un colegio')}` +
-      `${comuna ? ` (${titulo(prospecto?.comuna)})` : ''}. Me interesa conocer JUMP Math.`)}`
+      `${comuna ? ` (${titulo(prospecto?.comuna)})` : ''}. Quiero agendar la reunión de JUMP Math.`)}`
     : '';
   const waVisible = waNum.length >= 11
     ? `+${waNum.slice(0, 2)} ${waNum.slice(2, 3)} ${waNum.slice(3, 7)} ${waNum.slice(7)}` : '';
 
   const sitio = String(ctx?.sitio || '').trim();
   const remitente = String(ctx?.remitente || '').trim();
+  const horarios = String(ctx?.horarios || '').split(',')
+    .map((h) => h.trim()).filter(Boolean).slice(0, 4);
+
+  const f = 'font-family:Arial,Helvetica,sans-serif';
 
   const tarjetaSimce = Number.isFinite(simce) ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-           style="background:#f2f6fc;border-left:4px solid ${MARCA.rojo};border-radius:0 8px 8px 0">
+           style="background:#f2f6fc;border-left:4px solid ${MARCA.rojo};border-radius:0 10px 10px 0">
       <tr>
-        <td style="padding:14px 18px;font-family:Arial,sans-serif">
-          <span style="font-size:30px;font-weight:bold;color:${MARCA.navy}">${Math.round(simce)}</span>
-          <span style="font-size:13px;color:#5a6b84">&nbsp;puntos · SIMCE Matemática 4º básico${anio ? ` ${escaparHtml(anio)}` : ''}</span>
-          ${brecha > 0 ? `<div style="font-size:13px;color:${MARCA.rojo};font-weight:bold;padding-top:2px">
-            ${brecha} puntos bajo el promedio nacional (${ctx?.promedio || 253})</div>
-          <div style="font-size:12px;color:#5a6b84;padding-top:3px">Una brecha que un método estructurado puede cerrar.</div>` : ''}
+        <td width="46%" style="padding:16px 6px 16px 18px;${f};border-right:1px solid #dde5f0" valign="top">
+          <span style="font-size:34px;font-weight:bold;color:${MARCA.rojo}">${Math.round(simce)}</span>
+          <span style="font-size:13px;font-weight:bold;color:${MARCA.navy}">&nbsp;puntos</span>
+          <div style="font-size:12.5px;font-weight:bold;color:${MARCA.navy};padding-top:4px">
+            SIMCE Matemática 4º básico${anio ? ` ${escaparHtml(anio)}` : ''}</div>
+        </td>
+        <td style="padding:16px 18px 16px 16px;${f}" valign="top">
+          ${brecha > 0 ? `
+          <span style="font-size:34px;font-weight:bold;color:${MARCA.rojo}">${brecha}</span>
+          <span style="font-size:13px;font-weight:bold;color:${MARCA.rojo}">&nbsp;puntos bajo el<br>
+            <span style="padding-left:2px">promedio nacional (${ctx?.promedio || 253})</span></span>
+          <div style="font-size:12.5px;color:#5a6b84;padding-top:5px">
+            Una brecha que un método estructurado puede cerrar.</div>`
+    : `<div style="font-size:13px;color:#5a6b84;padding-top:8px">
+            Promedio nacional: ${ctx?.promedio || 253} puntos.</div>`}
         </td>
       </tr>
     </table>` : '';
 
+  const chips = horarios.length ? `
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      ${horarios.map((h) => {
+    const [dia, ...resto] = h.split(/\s+/);
+    return `<td style="padding:0 10px 0 0"><table role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td style="background:#eef2f8;border-radius:8px;padding:9px 13px;${f};font-size:13px">
+          <img src="${img('ic-cal-chip')}" width="14" alt="" style="vertical-align:-2px;border:0">
+          &nbsp;<b style="color:${MARCA.navy}">${escaparHtml(dia)}</b>
+          &nbsp;<span style="color:#3d4c63">${escaparHtml(resto.join(' '))}</span>
+        </td></tr></table></td>`;
+  }).join('')}
+    </tr></table>` : '';
+
+  const beneficios = [
+    ['ic-grafico', 'Mejora significativa en resultados SIMCE.'],
+    ['ic-personas', 'Menos brechas, más estudiantes comprendiendo.'],
+    ['ic-lista', 'Docentes con secuencias claras y fáciles de aplicar.'],
+    ['ic-diana', 'Progreso medible clase a clase.'],
+  ].map(([icono, txt], i) => `
+    <td width="25%" align="center" valign="top"
+        style="padding:4px 8px;${f};font-size:12px;line-height:1.45;color:#2c4a38;
+        ${i ? 'border-left:1px solid #d8e8dc' : ''}">
+      <img src="${img(icono)}" width="34" alt="" style="border:0"><br>
+      <span style="display:inline-block;padding-top:6px">${txt}</span>
+    </td>`).join('');
+
   const botonWa = wa ? `
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 6px">
-      <tr><td style="background:#25D366;border-radius:8px">
-        <a href="${enlace(wa)}" style="display:inline-block;padding:13px 26px;
-          font-family:Arial,sans-serif;font-size:15px;font-weight:bold;
-          color:#ffffff;text-decoration:none">Conversemos por WhatsApp&nbsp;&nbsp;&#8250;</a>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr><td align="center" style="background:#1faa4f;border-radius:10px">
+        <a href="${enlace(wa)}" style="display:block;padding:15px 20px;${f};font-size:16px;
+          font-weight:bold;color:#ffffff;text-decoration:none">
+          <img src="${img('ic-wa-blanco')}" width="20" alt="" style="vertical-align:-4px;border:0">
+          &nbsp;Agendar reunión de 30 minutos por WhatsApp&nbsp;&nbsp;&#8250;</a>
       </td></tr>
     </table>
-    <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84;padding-bottom:4px">
+    <div style="${f};font-size:12.5px;color:#5a6b84;padding-top:8px" align="center">
       o simplemente responda este correo — contesto personalmente.</div>` : `
-    <div style="font-family:Arial,sans-serif;font-size:14px;color:#333;padding:2px 0 6px">
-      Responda este correo y coordinamos — contesto personalmente.</div>`;
+    <div style="${f};font-size:14px;color:#333333;padding:2px 0 6px">
+      Responda este correo y coordinamos una reunión de 30 minutos — contesto personalmente.</div>`;
 
-  const contactoFirma = [
-    waVisible ? `WhatsApp <a href="${enlace(wa)}" style="color:${MARCA.navy};text-decoration:none;font-weight:bold">${waVisible}</a>` : '',
-    remitente ? `<a href="mailto:${escaparHtml(remitente)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(remitente)}</a>` : '',
-    sitio ? `<a href="${enlace(sitio)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(sitio.replace(/^https?:\/\//, ''))}</a>` : '',
-  ].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+  const filaContacto = (icono, contenido) => `
+    <tr><td style="padding:5px 0;${f};font-size:13px">
+      <img src="${img(icono)}" width="16" alt="" style="vertical-align:-3px;border:0">
+      &nbsp;&nbsp;${contenido}</td></tr>`;
+  const contactos = [
+    waVisible ? filaContacto('ic-wa',
+      `<a href="${enlace(wa)}" style="color:${MARCA.navy};text-decoration:none;font-weight:bold">${waVisible}</a>`) : '',
+    remitente ? filaContacto('ic-mail',
+      `<a href="mailto:${escaparHtml(remitente)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(remitente)}</a>`) : '',
+    sitio ? filaContacto('ic-globo',
+      `<a href="${enlace(sitio)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(sitio.replace(/^https?:\/\//, ''))}</a>`) : '',
+  ].filter(Boolean).join('');
 
   return `<!doctype html>
 <html><body style="margin:0;padding:0;background:${MARCA.fondo}">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
-  Una propuesta concreta para matemática en ${colegio || 'su establecimiento'} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  Una oportunidad concreta para matemática en ${colegio || 'su establecimiento'} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
 </div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
   <tr><td align="center" style="padding:26px 12px">
-    <table role="presentation" width="560" cellpadding="0" cellspacing="0"
-           style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden">
-      <tr><td style="height:5px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
-      <tr><td style="padding:22px 30px 6px">
-        <img src="${base}${MARCA.logo}" width="170" alt="JUMP Math Chile"
-             style="display:block;border:0;max-width:170px">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0"
+           style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden">
+      <tr><td colspan="2" style="height:5px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
+
+      <tr><td colspan="2" style="padding:24px 32px 4px">
+        <img src="${base}${MARCA.logo}" width="168" alt="JUMP Math Chile"
+             style="display:block;border:0;max-width:168px">
       </td></tr>
-      <tr><td style="padding:16px 30px 4px;font-family:Arial,sans-serif">
-        ${comuna ? `<div style="font-size:12px;font-weight:bold;letter-spacing:.09em;
-          text-transform:uppercase;color:${MARCA.rojo}">${comuna}</div>` : ''}
-        <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:1.25;
-          color:${MARCA.navy};padding:4px 0 14px">${colegio}</div>
-        ${tarjetaSimce}
+
+      <tr>
+        <td style="padding:18px 6px 0 32px;${f}" valign="top">
+          ${comuna ? `<div style="font-size:12px;font-weight:bold;letter-spacing:.09em;
+            text-transform:uppercase;color:${MARCA.rojo}">${comuna}</div>` : ''}
+          <div style="font-size:25px;line-height:1.25;font-weight:bold;color:${MARCA.navy};
+            padding:6px 0 2px">Una oportunidad concreta para seguir mejorando</div>
+          <div style="font-size:22px;line-height:1.3;color:${MARCA.navy}">en Matemática 4º básico.</div>
+        </td>
+        <td width="215" style="padding:10px 26px 0 0" valign="top" align="right">
+          <img src="${img('ilustracion')}" width="205" alt=""
+               style="display:block;border:0;max-width:205px">
+        </td>
+      </tr>
+
+      <tr><td colspan="2" style="padding:14px 32px 14px;${f};font-size:15px;color:#333333">
+        Estimado equipo directivo ${articulo}<br>
+        <b style="color:${MARCA.navy}">${colegio}</b>,
       </td></tr>
-      <tr><td style="padding:12px 30px 0;font-family:Arial,sans-serif;font-size:12px;
-        color:#8a93a3">Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
-        &nbsp;·&nbsp; Canadá, EE.&nbsp;UU. y España</td></tr>
-      <tr><td style="padding:14px 30px 6px;font-family:Arial,sans-serif;
-        font-size:15px;line-height:1.65;color:#333333">${cuerpo}</td></tr>
-      <tr><td style="padding:12px 30px 4px">${botonWa}</td></tr>
-      <tr><td style="padding:16px 30px 0">
+
+      ${tarjetaSimce ? `<tr><td colspan="2" style="padding:0 32px 16px">${tarjetaSimce}</td></tr>` : ''}
+
+      <tr><td colspan="2" style="padding:0 32px 18px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f4f6f9;border-radius:999px">
+          <tr><td style="padding:9px 18px;${f};font-size:12px;color:#5a6b84" align="center">
+            <img src="${img('ic-globo')}" width="15" alt="" style="vertical-align:-3px;border:0">
+            &nbsp;Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
+            &nbsp;·&nbsp; Canadá, EE.&nbsp;UU. y España</td></tr>
+        </table>
+      </td></tr>
+
+      <tr><td colspan="2" style="padding:0 32px 4px;${f}">
+        <div style="font-size:16px;font-weight:bold;color:${MARCA.navy};padding-bottom:6px">
+          ¿Qué es JUMP Math?</div>
+        <div style="font-size:14.5px;line-height:1.6;color:#333333">${cuerpo}</div>
+      </td></tr>
+
+      <tr><td colspan="2" style="padding:16px 32px 0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="background:#eef7f0;border-radius:12px">
+          <tr><td colspan="4" style="padding:16px 18px 8px;${f};font-size:15px;
+            font-weight:bold;color:#1e6b40">¿Qué logran los colegios con JUMP Math?</td></tr>
+          <tr>${beneficios}</tr>
+          <tr><td colspan="4" style="font-size:0;height:16px">&nbsp;</td></tr>
+        </table>
+      </td></tr>
+
+      <tr>
+        <td width="86" style="padding:22px 0 0 32px" valign="top">
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="background:#eaf0f8;border-radius:50%;width:64px;height:64px" align="center" valign="middle">
+              <img src="${img('ic-cal-navy')}" width="34" alt="" style="border:0;vertical-align:middle">
+            </td></tr></table>
+        </td>
+        <td style="padding:22px 32px 0 14px;${f}" valign="top">
+          <div style="font-size:16.5px;font-weight:bold;color:${MARCA.navy};padding-bottom:4px">
+            ¿Revisamos juntos cómo funciona${comuna ? ` en ${comuna}` : ''}?</div>
+          <div style="font-size:14px;line-height:1.55;color:#333333;padding-bottom:10px">
+            Podemos reunirnos 30 minutos para mostrarles cómo implementarlo
+            y los resultados que han obtenido otros colegios.</div>
+          ${chips}
+        </td>
+      </tr>
+
+      <tr><td colspan="2" style="padding:18px 32px 6px">${botonWa}</td></tr>
+
+      <tr><td colspan="2" style="padding:14px 32px 0">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="background:#fdefee;border-radius:10px">
+          <tr>
+            <td width="52" style="padding:13px 0 13px 16px" valign="middle">
+              <img src="${img('ic-cal-rojo')}" width="30" alt="" style="border:0"></td>
+            <td style="padding:13px 16px 13px 6px;${f};font-size:13px;line-height:1.5;color:#333333">
+              Los programas que comienzan con el <b style="color:${MARCA.rojo}">año escolar 2027</b>
+              se están definiendo durante estas semanas, por lo que este es un buen momento
+              para evaluarlo.</td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <tr><td colspan="2" style="padding:20px 32px 0">
         <div style="border-top:1px solid #e6e9ef;font-size:0">&nbsp;</div>
       </td></tr>
-      <tr><td style="padding:10px 30px 6px">
-        <img src="${base}${MARCA.firma}" width="200" alt="${escaparHtml(MARCA.firmante)}"
-             style="display:block;border:0;max-width:200px">
-        <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:bold;
-          color:${MARCA.navy};padding-top:8px">${escaparHtml(MARCA.firmante)}</div>
-        <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84;
-          padding-top:1px">${escaparHtml(MARCA.cargo)}</div>
-        ${contactoFirma ? `<div style="font-family:Arial,sans-serif;font-size:12px;
-          color:#5a6b84;padding-top:8px">${contactoFirma}</div>` : ''}
-      </td></tr>
-      <tr><td style="padding:6px 30px 26px;font-family:Arial,sans-serif;font-size:13px;
-        line-height:1.55;color:#333333"><b>PD:</b> los programas que parten con el año
-        escolar se definen en estas semanas. Si le hace sentido para 2027, este es el
-        momento de conversarlo.</td></tr>
+      <tr>
+        <td style="padding:6px 6px 26px 32px;${f}" valign="top">
+          <img src="${base}${MARCA.firma}" width="205" alt="${escaparHtml(MARCA.firmante)}"
+               style="display:block;border:0;max-width:205px">
+          <div style="font-size:15px;font-weight:bold;color:${MARCA.navy};padding-top:8px">
+            ${escaparHtml(MARCA.firmante)}</div>
+          <div style="font-size:13px;color:#5a6b84;padding-top:1px">${escaparHtml(MARCA.cargo)}</div>
+        </td>
+        <td width="235" style="padding:14px 32px 26px 16px;border-left:1px solid #e6e9ef" valign="middle">
+          <table role="presentation" cellpadding="0" cellspacing="0">${contactos}</table>
+        </td>
+      </tr>
     </table>
-    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%">
-      <tr><td style="padding:14px 20px;font-family:Arial,sans-serif;font-size:11px;
-        line-height:1.5;color:#8a93a3" align="center">
+
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
+      <tr><td style="padding:14px 20px;${f};font-size:11px;line-height:1.5;color:#8a93a3" align="center">
         Le escribimos porque ${colegio || 'su establecimiento'} figura en el directorio público
-        de establecimientos de MINEDUC.<br>
-        Si prefiere no recibir más información, responda este correo con la palabra BAJA.
+        de establecimientos de MINEDUC. Si prefiere no recibir más información,<br>
+        responda este correo con la palabra BAJA.
       </td></tr>
     </table>
   </td></tr>

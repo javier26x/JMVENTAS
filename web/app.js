@@ -665,14 +665,9 @@ function abrirEditorDesdeSegmento() {
   abrirEditor();
 }
 
-/* El encabezado del correo ya muestra el colegio y su SIMCE en grande,
-   así que el cuerpo no repite el dato: queda corto y va directo a la
-   propuesta. La firma manuscrita cierra en lugar del "quedo atento". */
-const PLANTILLA = `Estimado equipo directivo:
-
-JUMP Math es un método de enseñanza de la matemática con evidencia de impacto en estudios controlados. No reemplaza al profesor: le entrega una secuencia de clases estructurada que descompone cada objetivo en pasos que todo el curso puede seguir.
-
-¿Tendrían 30 minutos para una reunión? Me encantaría mostrarles cómo funcionaría en {{comuna}}.`;
+/* El diseño ya trae el saludo, el dato SIMCE, la propuesta de reunión y
+   la firma: este texto alimenta sólo la sección "¿Qué es JUMP Math?". */
+const PLANTILLA = `Es un método de enseñanza de la matemática con evidencia de impacto en estudios controlados. Entrega a los docentes una secuencia de clases estructurada que descompone cada objetivo en pasos que todo el curso puede seguir.`;
 
 function abrirEditor() {
   const c = estado.campanaActual;
@@ -716,6 +711,7 @@ function ctxCorreo(extra = {}) {
     promedio: PROMEDIO_MATE,
     whatsapp: $('c-whatsapp').value.trim(),
     sitio: $('c-sitio').value.trim(),
+    horarios: $('c-horarios').value.trim(),
     remitente: mail.gmailCorreo() || '',
     ...extra,
   };
@@ -725,6 +721,7 @@ function guardarContacto() {
   try {
     localStorage.setItem('jm.contacto', JSON.stringify({
       whatsapp: $('c-whatsapp').value, sitio: $('c-sitio').value,
+      horarios: $('c-horarios').value,
     }));
   } catch { /* modo privado */ }
 }
@@ -734,6 +731,7 @@ function restaurarContacto() {
     const v = JSON.parse(localStorage.getItem('jm.contacto') || '{}');
     if (v.whatsapp) $('c-whatsapp').value = v.whatsapp;
     if (v.sitio) $('c-sitio').value = v.sitio;
+    if (v.horarios) $('c-horarios').value = v.horarios;
   } catch { /* nada guardado */ }
 }
 
@@ -1042,10 +1040,24 @@ function pintarEstadoGmail(correo, conLectura) {
   $('d-revisar').disabled = !conLectura;
 }
 
+$('c-ver-grande').addEventListener('click', () => {
+  const ejemplo = estado.destinatarios[0];
+  if (!ejemplo) { mostrarError({ message: 'El segmento no tiene destinatarios.' }); return; }
+  const ctx = ctxCorreo();
+  const html = mail.correoHtml({
+    texto: mail.aplicarVariables($('c-cuerpo').value, ejemplo, ctx),
+    prospecto: ejemplo, ctx, base: location.origin, track: false,
+  });
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+});
+
 for (const [id, fn] of [
   ['c-asunto', previsualizar], ['c-cuerpo', previsualizar],
   ['c-whatsapp', () => { guardarContacto(); previsualizar(); }],
   ['c-sitio', () => { guardarContacto(); previsualizar(); }],
+  ['c-horarios', () => { guardarContacto(); previsualizar(); }],
 ]) $(id).addEventListener('input', fn);
 
 $('c-recalcular').addEventListener('click', () => {

@@ -240,11 +240,18 @@
             <label>Sitio web (opcional)
               <input type="text" id="c-sitio" placeholder="https://jumpmath.cl" autocomplete="off">
             </label>
+            <label>Horarios propuestos (separados por coma)
+              <input type="text" id="c-horarios"
+                     placeholder="Martes 10:00, Miércoles 15:00, Jueves 09:00" autocomplete="off">
+            </label>
           </div>
 
           <div class="tarjeta">
             <h3>Vista previa</h3>
             <p class="sub">Con los datos de un destinatario real.</p>
+            <div class="fila-botones" style="margin-bottom:10px">
+              <button id="c-ver-grande">Abrir en pestaña completa</button>
+            </div>
             <div id="previsualizacion" class="previsualizacion"></div>
           </div>
 
