@@ -21,29 +21,50 @@ const PIXEL = Buffer.from(
 
 const valido = (s) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(s);
 
+// Los filtros antispam y los escáneres corporativos cargan las imágenes
+// al recibir el correo, no al leerlo. Una apertura a los pocos segundos
+// del envío es una máquina, y contarla infla la tasa justo donde uno
+// querría confiar en ella.
+const SEGUNDOS_BOT = 15;
+
 async function registrar(campanaId, rbd, campo) {
   if (!valido(campanaId) || !valido(rbd)) return;
   const dest = db.doc(`campanas/${campanaId}/destinatarios/${rbd}`);
   const snap = await dest.get();
   if (!snap.exists) return;            // no crear documentos desde fuera
 
-  const datos = { [campo]: FieldValue.increment(1) };
-  // La primera apertura es el dato interesante; las siguientes sólo
-  // cuentan. Y no se degrada un "respondido" a "abierto".
-  if (campo === 'aperturas' && !snap.get('primeraApertura')) {
-    datos.primeraApertura = FieldValue.serverTimestamp();
-  }
-  if (snap.get('estado') === 'enviado' && campo === 'aperturas') {
-    datos.estado = 'abierto';
+  const enviado = snap.get('enviadoEn');
+  const segundos = enviado?.toMillis ? (Date.now() - enviado.toMillis()) / 1000 : Infinity;
+  const esBot = campo === 'aperturas' && segundos < SEGUNDOS_BOT;
+  const real = esBot ? 'aperturasBot' : campo;
+
+  const datos = { [real]: FieldValue.increment(1) };
+  if (!esBot && campo === 'aperturas') {
+    // La primera apertura es el dato interesante; las siguientes cuentan.
+    if (!snap.get('primeraApertura')) datos.primeraApertura = FieldValue.serverTimestamp();
+    // No degradar un "respondido" a "abierto".
+    if (snap.get('estado') === 'enviado') datos.estado = 'abierto';
   }
   await dest.set(datos, { merge: true });
   await db.doc(`campanas/${campanaId}`)
-    .set({ totales: { [campo]: FieldValue.increment(1) } }, { merge: true });
+    .set({ totales: { [real]: FieldValue.increment(1) } }, { merge: true });
 }
 
-exports.seguimiento = onRequest({ region: 'southamerica-west1', cors: true },
-  async (req, res) => {
-    const m = req.path.match(/^\/t\/(o|c)\/([^/]+)\/([^/?]+)/);
+exports.seguimiento = onRequest({
+  region: 'southamerica-west1',
+  // Endpoint público: sin tope, un bucle de peticiones se traduce en
+  // factura. Diez instancias sobran para el volumen de correo real.
+  maxInstances: 10,
+  memory: '256MiB',
+  timeoutSeconds: 20,
+}, async (req, res) => {
+    // Detrás de un rewrite de Hosting la ruta puede llegar en originalUrl.
+    const ruta = String(req.originalUrl || req.url || req.path || '');
+    if (/^\/t\/estado/.test(ruta)) {
+      res.json({ ok: true, servicio: 'seguimiento' });   // sonda para la app
+      return;
+    }
+    const m = ruta.match(/^\/t\/(o|c)\/([^/]+)\/([^/?]+)/);
     if (!m) { res.status(404).end(); return; }
     const [, tipo, campanaId, rbd] = m;
 

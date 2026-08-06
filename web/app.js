@@ -615,7 +615,10 @@ async function abrirDetalle(id) {
     { e: 'Enviados', v: numero(dest.filter((d) => d.estado !== 'pendiente' && d.estado !== 'error').length), n: `${pendientes} pendientes` },
     { e: 'Respuestas', v: numero(dest.filter((d) => d.estado === 'respondido').length), n: 'la métrica que importa' },
     { e: 'Errores y rebotes', v: numero(dest.filter((d) => ['error', 'rebotado'].includes(d.estado)).length), n: 'correo inválido o rechazado' },
-    { e: 'Aperturas', v: estado.campanaActual?.track ? numero(t.aperturas) : '—', n: estado.campanaActual?.track ? 'con seguimiento' : 'seguimiento desactivado' },
+    { e: 'Aperturas', v: estado.campanaActual?.track ? numero(t.aperturas) : '—',
+      n: estado.campanaActual?.track
+        ? `${numero(t.aperturasBot)} descartadas como escáner`
+        : 'seguimiento desactivado' },
   ].map((k) => `<div class="kpi"><div class="etiqueta">${esc(k.e)}</div>
       <div class="valor">${esc(k.v)}</div><div class="nota">${esc(k.n)}</div></div>`).join('');
 
@@ -807,6 +810,29 @@ $('conectar-gmail').addEventListener('click', async () => {
   } catch (e) { mostrarError(e); }
 });
 
+/* La casilla de aperturas sólo sirve si la función está desplegada.
+   Preguntar por ella evita una opción que promete algo que no ocurre. */
+async function comprobarSeguimiento() {
+  const nota = $('track-aviso');
+  const casilla = $('c-track-aperturas');
+  try {
+    const r = await fetch('/t/estado', { cache: 'no-store' });
+    const j = r.ok ? await r.json() : null;
+    if (!j?.ok) throw new Error('sin servicio');
+    casilla.disabled = false;
+    casilla.checked = true;
+    nota.textContent = 'Seguimiento activo. Las aperturas registradas en los primeros '
+      + '15 segundos se marcan como escáner y no cuentan: los filtros antispam cargan '
+      + 'las imágenes al recibir, no al leer.';
+  } catch {
+    casilla.disabled = true;
+    casilla.checked = false;
+    nota.textContent = 'La función de seguimiento no está desplegada, así que las '
+      + 'aperturas y clics no se registrarán. Envíos, errores, rebotes y respuestas '
+      + 'sí se miden. Para activarla: firebase deploy --only functions';
+  }
+}
+
 function pintarEstadoGmail(correo) {
   const caja = $('gmail-estado');
   if (correo) {
@@ -838,6 +864,7 @@ $('c-guardar').addEventListener('click', async () => {
     c.id = await mail.guardarCampana(db, c, estado.destinatarios, auth.currentUser.uid);
     progreso('Borrador guardado.');
     await pintarCampanas();
+    comprobarSeguimiento();
   } catch (e) { mostrarError(e); }
 });
 
@@ -903,6 +930,7 @@ onAuthStateChanged(auth, async (u) => {
     await cargarProspectos();
     poblarFiltros();
     await pintarCampanas();
+    comprobarSeguimiento();
   } catch (e) {
     $('cargando').classList.add('oculto');
     mostrarError(e);
