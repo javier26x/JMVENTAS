@@ -731,8 +731,130 @@ function restaurarContacto() {
     const v = JSON.parse(localStorage.getItem('jm.contacto') || '{}');
     if (v.whatsapp) $('c-whatsapp').value = v.whatsapp;
     if (v.sitio) $('c-sitio').value = v.sitio;
-    if (v.horarios) $('c-horarios').value = v.horarios;
+    /* Los bloques guardados caducan solos: proponer una fecha que ya pasó
+       es peor que no proponer ninguna. */
+    if (v.horarios) {
+      $('c-horarios').value = String(v.horarios).split(',')
+        .map((s) => s.trim()).filter(Boolean).filter(vigente).join(', ');
+    }
   } catch { /* nada guardado */ }
+  pintarAgenda();
+}
+
+/* ---------- agenda de horarios ----------
+   Proponer día y hora concretos consigue muchas más respuestas que un
+   "cuando usted pueda", pero teclearlos es lento y se presta a erratas.
+   La agenda arma el texto; el correo lo sigue leyendo como una lista
+   separada por comas, así que el resto del sistema no cambia. */
+const DIAS_SEM = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const HORAS = ['08:30', '09:00', '10:00', '11:00', '12:00', '15:00', '16:00', '17:00'];
+const MAX_HORARIOS = 3;
+const POR_PAGINA = 5;
+const agenda = { pagina: 0, dia: null };
+
+/** Los próximos días hábiles, desde mañana: nadie agenda para hoy. */
+function diasHabiles() {
+  const dias = [];
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  while (dias.length < POR_PAGINA * 4) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) dias.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+
+const mayus = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const textoSlot = (d, hora) =>
+  `${mayus(DIAS_SEM[d.getDay()])} ${d.getDate()} ${MESES[d.getMonth()]} · ${hora}`;
+
+const slotsElegidos = () => $('c-horarios').value
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+function ponerSlots(lista) {
+  // Ordenados por fecha y hora: proponer las 15:00 antes que las 09:00
+  // del mismo día se lee como descuido.
+  const unicos = [...new Set(lista)].sort((a, b) => orden(a) - orden(b));
+  $('c-horarios').value = unicos.slice(0, MAX_HORARIOS).join(', ');
+  guardarContacto();
+  pintarAgenda();
+  previsualizar();
+}
+
+/** Momento del bloque en milisegundos, para ordenarlos. Un texto sin
+ *  fecha reconocible se queda al principio, en el orden en que estaba. */
+function orden(texto) {
+  const f = fechaSlot(texto);
+  if (!f) return 0;
+  const h = String(texto).match(/(\d{1,2}):(\d{2})/);
+  return f.getTime() + (h ? (Number(h[1]) * 60 + Number(h[2])) * 60000 : 0);
+}
+
+/** La fecha que nombra el bloque, o null si no lleva ninguna. */
+function fechaSlot(texto) {
+  const m = String(texto).match(/(\d{1,2})\s+([a-z]{3})/i);
+  if (!m) return null;
+  const mes = MESES.indexOf(m[2].toLowerCase());
+  if (mes < 0) return null;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const f = new Date(hoy.getFullYear(), mes, Number(m[1]));
+  // Los bloques no llevan año: diciembre visto en enero es del año
+  // pasado, y enero visto en diciembre es del que viene.
+  const medioAno = 180 * 864e5;
+  if (f - hoy > medioAno) f.setFullYear(f.getFullYear() - 1);
+  else if (hoy - f > medioAno) f.setFullYear(f.getFullYear() + 1);
+  return f;
+}
+
+/** ¿El bloque sigue por venir? Un texto antiguo sin fecha ("Martes
+ *  10:00") se da por válido: no hay nada que caduque. */
+function vigente(texto) {
+  const f = fechaSlot(texto);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  return !f || f >= hoy;
+}
+
+function pintarAgenda() {
+  const dias = diasHabiles();
+  const pagina = dias.slice(agenda.pagina * POR_PAGINA, (agenda.pagina + 1) * POR_PAGINA);
+  // Al cambiar de página el día elegido puede quedar fuera de vista;
+  // mostrar horas de un día que no se ve confunde.
+  if (!pagina.some((d) => d.toDateString() === agenda.dia)) {
+    agenda.dia = pagina[0]?.toDateString() || null;
+  }
+  const dia = pagina.find((d) => d.toDateString() === agenda.dia);
+
+  $('ag-mes').textContent = pagina.length
+    ? mayus(pagina[0].toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })) : '';
+  $('ag-antes').disabled = agenda.pagina === 0;
+  $('ag-despues').disabled = (agenda.pagina + 1) * POR_PAGINA >= dias.length;
+
+  $('ag-dias').innerHTML = pagina.map((d) => `
+    <button type="button" class="ag-dia" data-fecha="${d.toDateString()}"
+            aria-pressed="${d.toDateString() === agenda.dia}">
+      ${DIAS_SEM[d.getDay()].slice(0, 3)}<b>${d.getDate()}</b>
+    </button>`).join('');
+
+  const elegidos = slotsElegidos();
+  $('ag-horas').innerHTML = dia ? HORAS.map((h) => {
+    const t = textoSlot(dia, h);
+    const puesto = elegidos.includes(t);
+    const lleno = elegidos.length >= MAX_HORARIOS;
+    return `<button type="button" class="ag-hora" data-hora="${h}"
+      ${puesto || lleno ? 'disabled' : ''}
+      title="${puesto ? 'Ya está propuesto' : lleno ? 'Máximo 3 bloques' : esc(t)}">${h}</button>`;
+  }).join('') : '';
+
+  $('ag-elegidos').innerHTML = (elegidos.length
+    ? elegidos.map((t, i) => `<span class="chip">${esc(t)}`
+      + `<button data-quitar="${i}" title="Quitar">×</button></span>`).join('')
+    : '<span class="ag-vacio">Sin bloques: el correo sólo invitará a responder.</span>')
+    + (elegidos.length >= MAX_HORARIOS
+      ? '<span class="ag-vacio">Máximo 3 · quita uno para cambiarlo.</span>' : '');
 }
 
 function previsualizar() {
@@ -1057,8 +1179,38 @@ for (const [id, fn] of [
   ['c-asunto', previsualizar], ['c-cuerpo', previsualizar],
   ['c-whatsapp', () => { guardarContacto(); previsualizar(); }],
   ['c-sitio', () => { guardarContacto(); previsualizar(); }],
-  ['c-horarios', () => { guardarContacto(); previsualizar(); }],
 ]) $(id).addEventListener('input', fn);
+
+$('ag-dias').addEventListener('click', (e) => {
+  const b = e.target.closest('.ag-dia');
+  if (!b) return;
+  agenda.dia = b.dataset.fecha;
+  pintarAgenda();
+});
+
+$('ag-horas').addEventListener('click', (e) => {
+  const b = e.target.closest('.ag-hora');
+  if (!b || b.disabled) return;
+  const d = diasHabiles().find((x) => x.toDateString() === agenda.dia);
+  if (d) ponerSlots([...slotsElegidos(), textoSlot(d, b.dataset.hora)]);
+});
+
+$('ag-elegidos').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-quitar]');
+  if (!b) return;
+  const lista = slotsElegidos();
+  lista.splice(Number(b.dataset.quitar), 1);
+  ponerSlots(lista);
+});
+
+$('ag-antes').addEventListener('click', () => {
+  agenda.pagina = Math.max(0, agenda.pagina - 1);
+  pintarAgenda();
+});
+$('ag-despues').addEventListener('click', () => {
+  agenda.pagina += 1;
+  pintarAgenda();
+});
 
 $('c-recalcular').addEventListener('click', () => {
   estado.destinatarios = segmentoActual();

@@ -240,10 +240,22 @@
             <label>Sitio web (opcional)
               <input type="text" id="c-sitio" placeholder="https://jumpmath.cl" autocomplete="off">
             </label>
-            <label>Horarios propuestos (separados por coma)
-              <input type="text" id="c-horarios"
-                     placeholder="Martes 10:00, Miércoles 15:00, Jueves 09:00" autocomplete="off">
-            </label>
+            <div class="campo-agenda">
+              <span class="etq-agenda">Horarios propuestos</span>
+              <p class="sub">Elige hasta 3 bloques concretos: proponer día y
+                hora responde mucho mejor que “cuando usted pueda”.</p>
+              <div class="agenda">
+                <div class="agenda-cab">
+                  <button class="fantasma" id="ag-antes" title="Días anteriores">‹</button>
+                  <strong id="ag-mes"></strong>
+                  <button class="fantasma" id="ag-despues" title="Días siguientes">›</button>
+                </div>
+                <div id="ag-dias" class="ag-dias"></div>
+                <div id="ag-horas" class="ag-horas"></div>
+              </div>
+              <div id="ag-elegidos" class="ag-elegidos"></div>
+              <input type="hidden" id="c-horarios">
+            </div>
           </div>
 
           <div class="tarjeta">
