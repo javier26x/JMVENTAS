@@ -25,8 +25,12 @@ firebase-debug.log
 # Datos de contacto masivos: el repo es público y estos archivos traen
 # miles de correos personales y nombres de personas. Van a Firestore,
 # que está protegido por reglas, no a GitHub.
-datos/contactos-importados.csv
-datos/contactos-oficiales.csv
+# Patrón amplio a propósito: el archivo descargado puede llegar con
+# guiones, sin guiones o con "(1)" según el navegador, y un nombre que
+# no calce publica miles de correos personales en un repo público.
+datos/*ontact*.csv
+datos/*correo*.csv
+!datos/contactos-verificados.csv
 
 # Descargas del Simce: se vuelven a bajar solas
 .cache-simce/

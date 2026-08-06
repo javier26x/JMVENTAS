@@ -55,6 +55,7 @@ const valor = (f, def = null) => {
 const ADMIN = tiene('--admin');
 const DRY = tiene('--dry-run');
 const LIMPIAR = tiene('--limpiar');
+const FORZAR = tiene('--forzar');
 const CSV = valor('--csv', 'datos/contactos-oficiales.csv');
 const DESDE = Number(valor('--desde', 0)) || 0;
 const FUENTE = valor('--fuente', 'oficial');
@@ -155,6 +156,8 @@ async function main() {
   console.log(`${path.relative(RAIZ, ruta)}: ${filas.length} filas, `
     + `${conDato.length} ${LIMPIAR ? 'a limpiar' : 'con datos'}`);
   if (!LIMPIAR) console.log(`Columnas a cargar: ${presentes.join(', ') || 'ninguna'}`);
+  if (FORZAR) console.log('--forzar: se sobrescribe el contacto ya cargado '
+    + '(salvo el marcado como manual).');
 
   if (!conDato.length) {
     console.log('Nada que hacer.');
@@ -228,8 +231,13 @@ async function main() {
           const bruto = f[col];
           if (!bruto) continue;
           const { campo, pisa, numero } = MAPA[col];
-          // El contacto escrito a mano gana; el dato oficial se refresca.
-          if (!pisa && String(previo?.[campo] || '').trim()) continue;
+          /* El contacto escrito a mano gana; el dato oficial se refresca.
+             --forzar rehace también el contacto ya cargado, que es la vía
+             para corregir una cosecha anterior equivocada; lo marcado como
+             manual se respeta igual, porque eso sí lo escribió una
+             persona. */
+          const manual = previo?.contactoFuente === 'manual';
+          if (!pisa && !(FORZAR && !manual) && String(previo?.[campo] || '').trim()) continue;
           const valor = numero ? Number(String(bruto).replace(',', '.')) : bruto;
           if (numero && !Number.isFinite(valor)) continue;
           datos[campo] = valor;
