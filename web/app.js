@@ -6,7 +6,8 @@
 // ============================================================
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getRedirectResult, signOut, onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
 import {
   getFirestore, collection, doc, getDocs, getDoc, query, where,
@@ -17,7 +18,12 @@ import * as mail from './mailing.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCTmWjLoe2p78K6wng9SF9DKUoAKEoMf1M',
-  authDomain: 'jmventas-aab3c.firebaseapp.com',
+  /* El dominio de la propia app, no el firebaseapp.com por defecto.
+     Chrome bloquea las cookies de terceros, y con authDomain en otro
+     origen el popup de Google termina, se cierra y la promesa no se
+     resuelve nunca: la pantalla queda pegada sin error. Hosting sirve
+     el asistente de autenticación en /__/auth/ del mismo dominio. */
+  authDomain: 'jmventas-aab3c.web.app',
   projectId: 'jmventas-aab3c',
   storageBucket: 'jmventas-aab3c.firebasestorage.app',
   messagingSenderId: '868229245128',
@@ -1087,13 +1093,42 @@ $('lista-variables').addEventListener('click', (e) => {
 
 // ---------- sesión ----------
 $('entrar').addEventListener('click', async () => {
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch (e) {
-    const p = $('acceso-error');
-    p.textContent = e.code === 'auth/operation-not-allowed'
-      ? 'Falta habilitar el proveedor Google en Authentication → Sign-in method.'
-      : (e.message || String(e));
-    p.classList.remove('oculto');
+  const b = $('entrar');
+  const aviso = $('acceso-error');
+  b.disabled = true;
+  b.textContent = 'Abriendo ventana de Google…';
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+    return;                       // onAuthStateChanged toma el control
+  } catch (e) {
+    if (e.code === 'auth/popup-blocked') {
+      // El navegador no dejó abrir la ventana: se sigue en esta misma
+      // pestaña, y getRedirectResult completa el acceso al volver.
+      await signInWithRedirect(auth, new GoogleAuthProvider());
+      return;
+    }
+    aviso.textContent = {
+      'auth/operation-not-allowed':
+        'Falta habilitar el proveedor Google: Firebase Console → Authentication → Sign-in method → Google.',
+      'auth/unauthorized-domain':
+        'Este dominio no está autorizado en Authentication → Settings → Authorized domains.',
+      'auth/popup-closed-by-user':
+        'La ventana se cerró antes de completar el acceso. Intenta de nuevo.',
+      'auth/cancelled-popup-request':
+        'Había otra ventana de acceso abierta. Intenta de nuevo.',
+    }[e.code] || `${e.code || ''} ${e.message || e}`.trim();
+    aviso.classList.remove('oculto');
+  } finally {
+    b.disabled = false;
+    b.textContent = 'Entrar con Google';
   }
+});
+
+// Completa el acceso cuando el flujo fue por redirección.
+getRedirectResult(auth).catch((e) => {
+  const aviso = $('acceso-error');
+  aviso.textContent = e.message || String(e);
+  aviso.classList.remove('oculto');
 });
 $('salir').addEventListener('click', () => signOut(auth));
 
