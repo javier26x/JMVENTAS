@@ -570,15 +570,13 @@ function exportarCsv() {
   const cols = EXPORTS[v];
   const celda = (x) => {
     const s = String(x ?? '');
-    return /[";
-]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lineas = [cols.map(([h]) => h).join(';'),
     ...filas.map((f) => cols.map(([, fn]) => celda(fn(f))).join(';'))];
 
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['\ufeff' + lineas.join('
-')],
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + lineas.join('\r\n')],
     { type: 'text/csv;charset=utf-8' }));
   a.download = `jumpmath-${v}${usarSeleccion ? '-seleccion' : ''}-`
     + `${new Date().toISOString().slice(0, 10)}.csv`;

@@ -36,3 +36,6 @@ datos/*correo*.csv
 .cache-simce/
 
 functions/node_modules/
+
+# Banco de pruebas local de la web
+.webtest/
