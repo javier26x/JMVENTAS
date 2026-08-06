@@ -207,7 +207,7 @@
 
           <label>Asunto
             <input type="text" id="c-asunto"
-                   placeholder="{{establecimiento}}: 53 puntos bajo el promedio en matemática">
+                   placeholder="Matemática en {{establecimiento}}: propuesta concreta para 2027">
           </label>
 
           <label>Mensaje
@@ -228,6 +228,18 @@
               <button id="c-recalcular">Recalcular desde los filtros actuales</button>
             </div>
             <div id="segmento-resumen" class="resumen-segmento"></div>
+          </div>
+
+          <div class="tarjeta">
+            <h3>Contacto en el correo</h3>
+            <p class="sub">Aparecen como botón y en la firma. El WhatsApp llega
+              con el nombre del colegio ya escrito en el mensaje.</p>
+            <label>WhatsApp
+              <input type="text" id="c-whatsapp" placeholder="+56 9 1234 5678" autocomplete="off">
+            </label>
+            <label>Sitio web (opcional)
+              <input type="text" id="c-sitio" placeholder="https://jumpmath.cl" autocomplete="off">
+            </label>
           </div>
 
           <div class="tarjeta">

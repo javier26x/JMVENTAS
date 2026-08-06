@@ -680,6 +680,7 @@ function abrirEditor() {
   $('c-asunto').value = c.asunto || '';
   $('c-cuerpo').value = c.cuerpo || '';
   $('c-track-aperturas').checked = Boolean(c.track);
+  restaurarContacto();
   $('segmento-desc').textContent = c.segmento?.desc || '—';
   resumenSegmento();
   previsualizar();
@@ -708,11 +709,39 @@ function resumenSegmento() {
   }
 }
 
+/* El contacto configurado sobrevive entre sesiones: el número de
+   WhatsApp no debería teclearse en cada campaña. */
+function ctxCorreo(extra = {}) {
+  return {
+    promedio: PROMEDIO_MATE,
+    whatsapp: $('c-whatsapp').value.trim(),
+    sitio: $('c-sitio').value.trim(),
+    remitente: mail.gmailCorreo() || '',
+    ...extra,
+  };
+}
+
+function guardarContacto() {
+  try {
+    localStorage.setItem('jm.contacto', JSON.stringify({
+      whatsapp: $('c-whatsapp').value, sitio: $('c-sitio').value,
+    }));
+  } catch { /* modo privado */ }
+}
+
+function restaurarContacto() {
+  try {
+    const v = JSON.parse(localStorage.getItem('jm.contacto') || '{}');
+    if (v.whatsapp) $('c-whatsapp').value = v.whatsapp;
+    if (v.sitio) $('c-sitio').value = v.sitio;
+  } catch { /* nada guardado */ }
+}
+
 function previsualizar() {
   const ejemplo = estado.destinatarios[0];
   const caja = $('previsualizacion');
   if (!ejemplo) { caja.textContent = 'Sin destinatarios en el segmento.'; return; }
-  const ctx = { promedio: PROMEDIO_MATE };
+  const ctx = ctxCorreo();
   const asunto = mail.aplicarVariables($('c-asunto').value, ejemplo, ctx);
   const texto = mail.aplicarVariables($('c-cuerpo').value, ejemplo, ctx);
 
@@ -813,7 +842,7 @@ async function enviar() {
   const prospectos = new Map(estado.destinatarios.map((p) => [String(p.rbd), p]));
   try {
     const r = await mail.enviarCampana(db, c, tanda,
-      { promedio: PROMEDIO_MATE, prospectos, cancelado: () => estado.cancelar },
+      ctxCorreo({ prospectos, cancelado: () => estado.cancelar }),
       ({ i, total, d, error }) => progreso(
         `${i}/${total} · ${d.establecimiento || d.rbd}${error ? ` — ERROR: ${error}` : ''}`));
     progreso(`Listo: ${r.enviados} enviados, ${r.errores} con error.`);
@@ -1015,6 +1044,8 @@ function pintarEstadoGmail(correo, conLectura) {
 
 for (const [id, fn] of [
   ['c-asunto', previsualizar], ['c-cuerpo', previsualizar],
+  ['c-whatsapp', () => { guardarContacto(); previsualizar(); }],
+  ['c-sitio', () => { guardarContacto(); previsualizar(); }],
 ]) $(id).addEventListener('input', fn);
 
 $('c-recalcular').addEventListener('click', () => {
@@ -1051,7 +1082,7 @@ $('c-prueba').addEventListener('click', async () => {
   try {
     await mail.enviarPrueba(
       { asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value },
-      ejemplo, { promedio: PROMEDIO_MATE });
+      ejemplo, ctxCorreo());
     progreso(`Prueba enviada a ${mail.gmailCorreo()} con los datos de `
       + `${ejemplo.establecimiento}. Revísala antes de enviar la campaña.`);
     limpiarError();

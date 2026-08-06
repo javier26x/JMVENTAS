@@ -170,13 +170,16 @@ const MARCA = {
  * de correo.
  */
 export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track }) {
+  /* Todo enlace del correo pasa por el registro de clics cuando hay
+     seguimiento: un clic en el botón de WhatsApp es la señal de compra
+     más fuerte que produce esta pieza. */
+  const enlace = (url) => (track
+    ? `${base}/t/c/${campanaId}/${rbd}?u=${encodeURIComponent(url)}`
+    : url);
+
   let cuerpo = escaparHtml(texto).replace(/\n/g, '<br>');
-  cuerpo = cuerpo.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
-    const destino = track
-      ? `${base}/t/c/${campanaId}/${rbd}?u=${encodeURIComponent(url)}`
-      : url;
-    return `<a href="${destino}" style="color:${MARCA.navy}">${url}</a>`;
-  });
+  cuerpo = cuerpo.replace(/(https?:\/\/[^\s<]+)/g,
+    (url) => `<a href="${enlace(url)}" style="color:${MARCA.navy}">${url}</a>`);
   const pixel = track
     ? `<img src="${base}/t/o/${campanaId}/${rbd}" width="1" height="1" alt="" style="display:none">`
     : '';
@@ -187,6 +190,22 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   const anio = prospecto?.simceAnio || '';
   const brecha = Number.isFinite(simce) ? Math.round((ctx?.promedio || 253) - simce) : null;
 
+  /* WhatsApp con el mensaje ya escrito y el colegio adentro: el director
+     toca el botón y el chat llega auto-identificado. Es el paso de menor
+     fricción posible entre leer y contactar. */
+  const dig = String(ctx?.whatsapp || '').replace(/\D/g, '');
+  const waNum = dig.length === 9 && dig.startsWith('9') ? `56${dig}` : dig;
+  const wa = waNum.length >= 11
+    ? `https://wa.me/${waNum}?text=${encodeURIComponent(
+      `Hola, le escribo de ${titulo(prospecto?.establecimiento || 'un colegio')}` +
+      `${comuna ? ` (${titulo(prospecto?.comuna)})` : ''}. Me interesa conocer JUMP Math.`)}`
+    : '';
+  const waVisible = waNum.length >= 11
+    ? `+${waNum.slice(0, 2)} ${waNum.slice(2, 3)} ${waNum.slice(3, 7)} ${waNum.slice(7)}` : '';
+
+  const sitio = String(ctx?.sitio || '').trim();
+  const remitente = String(ctx?.remitente || '').trim();
+
   const tarjetaSimce = Number.isFinite(simce) ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
            style="background:#f2f6fc;border-left:4px solid ${MARCA.rojo};border-radius:0 8px 8px 0">
@@ -195,13 +214,36 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
           <span style="font-size:30px;font-weight:bold;color:${MARCA.navy}">${Math.round(simce)}</span>
           <span style="font-size:13px;color:#5a6b84">&nbsp;puntos · SIMCE Matemática 4º básico${anio ? ` ${escaparHtml(anio)}` : ''}</span>
           ${brecha > 0 ? `<div style="font-size:13px;color:${MARCA.rojo};font-weight:bold;padding-top:2px">
-            ${brecha} puntos bajo el promedio nacional (${ctx?.promedio || 253})</div>` : ''}
+            ${brecha} puntos bajo el promedio nacional (${ctx?.promedio || 253})</div>
+          <div style="font-size:12px;color:#5a6b84;padding-top:3px">Una brecha que un método estructurado puede cerrar.</div>` : ''}
         </td>
       </tr>
     </table>` : '';
 
+  const botonWa = wa ? `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 6px">
+      <tr><td style="background:#25D366;border-radius:8px">
+        <a href="${enlace(wa)}" style="display:inline-block;padding:13px 26px;
+          font-family:Arial,sans-serif;font-size:15px;font-weight:bold;
+          color:#ffffff;text-decoration:none">Conversemos por WhatsApp&nbsp;&nbsp;&#8250;</a>
+      </td></tr>
+    </table>
+    <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84;padding-bottom:4px">
+      o simplemente responda este correo — contesto personalmente.</div>` : `
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#333;padding:2px 0 6px">
+      Responda este correo y coordinamos — contesto personalmente.</div>`;
+
+  const contactoFirma = [
+    waVisible ? `WhatsApp <a href="${enlace(wa)}" style="color:${MARCA.navy};text-decoration:none;font-weight:bold">${waVisible}</a>` : '',
+    remitente ? `<a href="mailto:${escaparHtml(remitente)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(remitente)}</a>` : '',
+    sitio ? `<a href="${enlace(sitio)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(sitio.replace(/^https?:\/\//, ''))}</a>` : '',
+  ].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+
   return `<!doctype html>
 <html><body style="margin:0;padding:0;background:${MARCA.fondo}">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
+  Una propuesta concreta para matemática en ${colegio || 'su establecimiento'} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
   <tr><td align="center" style="padding:26px 12px">
     <table role="presentation" width="560" cellpadding="0" cellspacing="0"
@@ -218,15 +260,25 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
           color:${MARCA.navy};padding:4px 0 14px">${colegio}</div>
         ${tarjetaSimce}
       </td></tr>
-      <tr><td style="padding:18px 30px 6px;font-family:Arial,sans-serif;
+      <tr><td style="padding:12px 30px 0;font-family:Arial,sans-serif;font-size:12px;
+        color:#8a93a3">Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
+        &nbsp;·&nbsp; Presente en Canadá, EE.&nbsp;UU. y España</td></tr>
+      <tr><td style="padding:14px 30px 6px;font-family:Arial,sans-serif;
         font-size:15px;line-height:1.65;color:#333333">${cuerpo}</td></tr>
-      <tr><td style="padding:16px 30px 28px">
+      <tr><td style="padding:12px 30px 4px">${botonWa}</td></tr>
+      <tr><td style="padding:12px 30px 6px">
         <img src="${base}${MARCA.firma}" width="185" alt="${escaparHtml(MARCA.firmante)}"
              style="display:block;border:0;max-width:185px">
         <div style="font-family:Arial,sans-serif;font-size:14px;font-weight:bold;
           color:${MARCA.navy};padding-top:6px">${escaparHtml(MARCA.firmante)}</div>
         <div style="font-family:Arial,sans-serif;font-size:13px;color:#5a6b84">${escaparHtml(MARCA.cargo)}</div>
+        ${contactoFirma ? `<div style="font-family:Arial,sans-serif;font-size:12px;
+          color:#5a6b84;padding-top:6px">${contactoFirma}</div>` : ''}
       </td></tr>
+      <tr><td style="padding:6px 30px 26px;font-family:Arial,sans-serif;font-size:13px;
+        line-height:1.55;color:#333333"><b>PD:</b> los programas que parten con el año
+        escolar se definen en estas semanas. Si le hace sentido para 2027, este es el
+        momento de conversarlo.</td></tr>
     </table>
     <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%">
       <tr><td style="padding:14px 20px;font-family:Arial,sans-serif;font-size:11px;
