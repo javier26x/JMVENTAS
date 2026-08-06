@@ -28,6 +28,9 @@
 
     <div class="grupo">
       <div class="grupo-tit">Prospección</div>
+      <button class="nav" data-vista="panel">
+        <span class="ic">📊</span> Panel <em></em>
+      </button>
       <button class="nav" data-vista="oportunidades" aria-current="true">
         <span class="ic">🎯</span> Oportunidades <em id="n-oportunidades"></em>
       </button>
@@ -69,6 +72,28 @@
 
     <div id="error" class="error oculto"></div>
 
+    <!-- ============ PANEL ============ -->
+    <section id="vista-panel" class="oculto">
+      <section class="kpis" id="kpis-panel"></section>
+      <div class="paneles">
+        <div class="tarjeta grafico">
+          <h3>Pipeline comercial</h3>
+          <p class="sub">Estado de los 7.808, contado en el servidor.</p>
+          <div id="g-estado" class="barras"></div>
+        </div>
+        <div class="tarjeta grafico">
+          <h3>Dolor en matemática</h3>
+          <p class="sub">SIMCE 2025 · brecha contra el promedio de 253.</p>
+          <div id="g-dolor" class="barras"></div>
+        </div>
+        <div class="tarjeta grafico">
+          <h3>Facilidad de cierre</h3>
+          <p class="sub">Tier por fricción de compra.</p>
+          <div id="g-tier" class="barras"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ VISTAS DE LISTADO ============ -->
     <section id="vista-listado">
       <section class="kpis" id="kpis"></section>
@@ -98,6 +123,11 @@
           <option value="ganado">Ganado</option>
           <option value="descartado">Descartado</option>
         </select>
+        <select id="f-correo">
+          <option value="">Correo: todos</option>
+          <option value="si">Con correo</option>
+          <option value="no">Sin correo</option>
+        </select>
         <select id="f-umbral" class="oculto">
           <option value="60">Dolor 60+ (bajo el promedio)</option>
           <option value="85">Dolor 85+ (crítico)</option>
@@ -120,6 +150,7 @@
         <span id="sel-detalle" class="sub"></span>
         <div class="fila-botones">
           <button class="primario" id="sel-campana">Crear campaña con la selección</button>
+          <button id="sel-copiar">Copiar correos</button>
           <button class="fantasma" id="sel-limpiar">Quitar selección</button>
         </div>
       </div>

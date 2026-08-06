@@ -10,7 +10,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
 import {
   getFirestore, collection, doc, getDocs, getDoc, query, where,
-  orderBy, limit, startAfter, serverTimestamp, setDoc,
+  orderBy, limit, startAfter, serverTimestamp, setDoc, getCountFromServer,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 import * as mail from './mailing.js';
@@ -53,6 +53,7 @@ const LISTADOS = ['oportunidades', 'prospectos', 'cuentas', 'redes'];
 const PAGINADAS = ['oportunidades', 'prospectos'];
 
 const TITULOS = {
+  panel: ['Panel', 'Cifras de toda la base, contadas en el servidor — no de la página cargada.'],
   oportunidades: ['Oportunidades', 'Colegios con problema de matemática documentado y posibilidad real de cierre.'],
   prospectos: ['Prospectos', 'Los 7.808 establecimientos con educación básica regular.'],
   cuentas: ['Cuentas', 'Cuentas de cabecera con contacto verificado.'],
@@ -72,10 +73,10 @@ const estado = {
 };
 
 const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
-  'f-estado', 'f-orden', 'f-umbral'];
+  'f-estado', 'f-correo', 'f-orden', 'f-umbral'];
 const ETIQUETA_FILTRO = {
   buscar: 'Búsqueda', 'f-tier': 'Tier', 'f-canal': 'Canal', 'f-region': 'Región',
-  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-umbral': 'Dolor',
+  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-correo': 'Correo', 'f-umbral': 'Dolor',
 };
 
 // ---------- presentación ----------
@@ -227,14 +228,18 @@ async function cargarProspectos({ continuar = false } = {}) {
 
 function filtrar(filas) {
   const texto = normalizar($('buscar').value).trim();
-  const [tier, canal, region, ate, est] =
-    ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado'].map((i) => $(i).value);
+  const [tier, canal, region, ate, est, correo] =
+    ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado', 'f-correo'].map((i) => $(i).value);
   return filas.filter((f) => {
     if (tier && String(f.tierNum ?? '') !== tier) return false;
     if (canal && f.canal !== canal) return false;
     if (region && f.region !== region) return false;
     if (ate && f.requiereAte !== (ate === 'si')) return false;
     if (est && (f.estadoCrm || 'nuevo') !== est) return false;
+    if (correo) {
+      const tiene = Boolean(String(f.email || '').trim() || (f.emails || []).length);
+      if (tiene !== (correo === 'si')) return false;
+    }
     if (texto) {
       const heno = normalizar([f.establecimiento, f.cuenta, f.comuna, f.region,
         f.establecimientoMayor, f.rutSostenedor, f.nombreContacto,
@@ -446,6 +451,135 @@ function poblarFiltros() {
   }
 }
 
+// ---------- panel ----------
+/* Cada barra sale de un conteo agregado en el servidor, así que cubre
+   los 7.808 aunque la tabla sólo tenga cargada una página. Un conteo
+   cuesta una lectura por cada mil documentos que calzan: la visita
+   completa al panel son ~15 consultas, centavos. */
+async function contarProspectos(...conds) {
+  const s = await getCountFromServer(query(collection(db, 'prospectos'), ...conds));
+  return s.data().count;
+}
+
+function pintarBarras(el, items) {
+  const max = Math.max(...items.map((i) => i.n), 1);
+  $(el).innerHTML = items.map((i) => `<div class="fila-barra">
+    <span class="fb-label" title="${esc(i.l)}">${esc(i.l)}</span>
+    <div class="fb-pista"><i style="width:${(i.n / max * 100).toFixed(1)}%"></i></div>
+    <span class="fb-num">${numero(i.n)}</span></div>`).join('');
+}
+
+async function cargarPanel() {
+  for (const g of ['g-estado', 'g-dolor', 'g-tier']) $(g).textContent = 'Contando…';
+  $('kpis-panel').innerHTML = '';
+  try {
+    const total = estado.meta?.prospectos || 7808;
+    const ESTADOS_PANEL = ['nuevo', 'contacto_ok', 'contactado', 'reunion',
+      'propuesta', 'ganado', 'descartado'];
+
+    const [porEstado, dolores, tiers, sinAte] = await Promise.all([
+      Promise.all(ESTADOS_PANEL.map((e) => contarProspectos(where('estadoCrm', '==', e)))),
+      Promise.all([
+        contarProspectos(where('dolorMate', '>=', 85)),
+        contarProspectos(where('dolorMate', '>=', 60), where('dolorMate', '<', 85)),
+        contarProspectos(where('dolorMate', '>=', 35), where('dolorMate', '<', 60)),
+        contarProspectos(where('dolorMate', '>=', 0), where('dolorMate', '<', 35)),
+      ]),
+      Promise.all([1, 2, 3].map((n) => contarProspectos(where('tierNum', '==', n)))),
+      contarProspectos(where('requiereAte', '==', false)),
+    ]);
+
+    const enGestion = porEstado[2] + porEstado[3] + porEstado[4];
+    $('kpis-panel').innerHTML = [
+      { e: 'Establecimientos', v: numero(total), n: 'con básica regular' },
+      { e: 'Matrícula básica', v: numero(estado.meta?.matBasicaTotal), n: 'alumnos alcanzables' },
+      { e: 'Sin requisito ATE', v: numero(sinAte), n: 'colegios de venta directa' },
+      { e: 'En gestión', v: numero(enGestion), n: 'contactado → propuesta' },
+      { e: 'Ganados', v: numero(porEstado[5]), n: 'contratos cerrados' },
+    ].map((k) => `<div class="kpi"><div class="etiqueta">${esc(k.e)}</div>
+      <div class="valor">${esc(k.v)}</div><div class="nota">${esc(k.n)}</div></div>`).join('');
+
+    pintarBarras('g-estado', ESTADOS_PANEL.map((e, i) => ({
+      l: ETIQUETA_ESTADO[e] || e, n: porEstado[i] })));
+    pintarBarras('g-dolor', [
+      { l: 'Crítico (85+)', n: dolores[0] },
+      { l: 'Serio (60–84)', n: dolores[1] },
+      { l: 'Medio (35–59)', n: dolores[2] },
+      { l: 'Bajo (0–34)', n: dolores[3] },
+      { l: 'Sin medición', n: Math.max(0, total - dolores.reduce((a, b) => a + b, 0)) },
+    ]);
+    pintarBarras('g-tier', [
+      { l: '1 · Fácil', n: tiers[0] },
+      { l: '2 · Medio', n: tiers[1] },
+      { l: '3 · Difícil', n: tiers[2] },
+    ]);
+  } catch (e) { mostrarError(e); }
+}
+
+// ---------- exportación ----------
+const EXPORTS = {
+  prospectos: [
+    ['RBD', (f) => f.rbd], ['ESTABLECIMIENTO', (f) => f.establecimiento],
+    ['COMUNA', (f) => f.comuna], ['REGION', (f) => f.region],
+    ['TIER', (f) => f.tierNum], ['CANAL', (f) => f.canal],
+    ['DEPENDENCIA', (f) => f.dependencia],
+    ['REQUIERE_ATE', (f) => (f.requiereAte ? 'SI' : 'NO')],
+    ['SIMCE_MATE', (f) => f.simceMate], ['SIMCE_ANIO', (f) => f.simceAnio],
+    ['DOLOR', (f) => f.dolorMate], ['MAT_BASICA', (f) => f.matBasica],
+    ['EMAIL', (f) => f.email], ['TELEFONO', (f) => f.telefono],
+    ['WEB', (f) => f.web], ['CONTACTO', (f) => f.contacto],
+    ['ESTADO', (f) => f.estadoCrm || 'nuevo'],
+  ],
+  cuentas: [
+    ['CUENTA', (f) => f.cuenta], ['PRIORIDAD', (f) => f.prioridad],
+    ['TIPO', (f) => f.tipo], ['CANAL', (f) => f.canal],
+    ['REQUIERE_ATE', (f) => (f.requiereAte ? 'SI' : 'NO')],
+    ['COLEGIOS', (f) => f.eeBasica], ['MAT_BASICA', (f) => f.matBasica],
+    ['CONTACTO', (f) => f.nombreContacto], ['CARGO', (f) => f.cargo],
+    ['EMAILS', (f) => (f.emails || []).join('; ')],
+    ['TELEFONOS', (f) => (f.telefonos || []).join('; ')],
+    ['CONFIANZA', (f) => f.confianza], ['PROXIMO_PASO', (f) => f.proximoPaso],
+    ['ESTADO', (f) => f.estadoCrm || 'nuevo'],
+  ],
+  redes: [
+    ['RUT_SOSTENEDOR', (f) => f.rutSostenedor],
+    ['ESTABLECIMIENTO_MAYOR', (f) => f.establecimientoMayor],
+    ['COMUNA_PRINCIPAL', (f) => f.comunaPrincipal],
+    ['REQUIERE_ATE', (f) => (f.requiereAte ? 'SI' : 'NO')],
+    ['COLEGIOS', (f) => f.eeBasica], ['MAT_BASICA', (f) => f.matBasica],
+    ['REGIONES', (f) => f.nRegiones], ['ESTADO', (f) => f.estadoCrm || 'nuevo'],
+  ],
+};
+EXPORTS.oportunidades = [['OPORTUNIDAD', (f) => f._oport], ...EXPORTS.prospectos];
+
+/* Separador punto y coma y BOM: el Excel en configuración chilena usa la
+   coma como decimal, así que un CSV separado por comas abre en una sola
+   columna. El BOM es lo que hace que las tildes sobrevivan. */
+function exportarCsv() {
+  const v = estado.vista;
+  const usarSeleccion = estado.seleccion.size > 0 && PAGINADAS.includes(v);
+  const filas = usarSeleccion ? [...estado.seleccion.values()] : filtrar(estado[v]);
+  if (!filas.length) { mostrarError({ message: 'Nada que exportar con estos filtros.' }); return; }
+
+  const cols = EXPORTS[v];
+  const celda = (x) => {
+    const s = String(x ?? '');
+    return /[";
+]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lineas = [cols.map(([h]) => h).join(';'),
+    ...filas.map((f) => cols.map(([, fn]) => celda(fn(f))).join(';'))];
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + lineas.join('
+')],
+    { type: 'text/csv;charset=utf-8' }));
+  a.download = `jumpmath-${v}${usarSeleccion ? '-seleccion' : ''}-`
+    + `${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // ---------- navegación ----------
 function irA(vista) {
   estado.vista = vista;
@@ -457,6 +591,7 @@ function irA(vista) {
   $('subtitulo').textContent = s;
 
   $('vista-listado').classList.toggle('oculto', !LISTADOS.includes(vista));
+  $('vista-panel').classList.toggle('oculto', vista !== 'panel');
   $('vista-campanas').classList.toggle('oculto', vista !== 'campanas');
   $('vista-editor').classList.add('oculto');
   $('vista-detalle').classList.add('oculto');
@@ -466,9 +601,15 @@ function irA(vista) {
 function actualizarAcciones() {
   const v = estado.vista;
   const caja = $('acciones-vista');
-  if (LISTADOS.includes(v) && PAGINADAS.includes(v)) {
-    caja.innerHTML = '<button class="primario" id="crear-campana">Crear campaña con este segmento</button>';
-    $('crear-campana').onclick = abrirEditorDesdeSegmento;
+  if (LISTADOS.includes(v)) {
+    const n = estado.seleccion.size || filtrar(estado[v]).length;
+    const que = estado.seleccion.size ? 'selección' : 'CSV';
+    caja.innerHTML = `<button id="exportar">Exportar ${que} (${numero(n)})</button>`
+      + (PAGINADAS.includes(v)
+        ? ' <button class="primario" id="crear-campana">Crear campaña con este segmento</button>'
+        : '');
+    $('exportar').onclick = exportarCsv;
+    if (PAGINADAS.includes(v)) $('crear-campana').onclick = abrirEditorDesdeSegmento;
   } else if (v === 'campanas') {
     caja.innerHTML = '<button class="primario" id="nueva-campana">Nueva campaña</button>';
     $('nueva-campana').onclick = () => {
@@ -704,6 +845,7 @@ document.querySelector('.lateral').addEventListener('click', async (e) => {
   if (!b) return;
   const v = b.dataset.vista;
   irA(v);
+  if (v === 'panel') { await cargarPanel(); return; }
   if (v === 'campanas') { await pintarCampanas(); return; }
   if (PAGINADAS.includes(v) && !estado[v].length) { await cargarProspectos(); poblarFiltros(); }
   else pintar();
@@ -744,6 +886,17 @@ $('cabecera-tabla').addEventListener('change', (e) => {
 });
 
 $('sel-limpiar').addEventListener('click', () => { estado.seleccion.clear(); pintar(); });
+
+$('sel-copiar').addEventListener('click', async () => {
+  const correos = [...new Set([...estado.seleccion.values()]
+    .map((f) => mail.primerCorreo(f.email)).filter(Boolean))];
+  if (!correos.length) { mostrarError({ message: 'La selección no tiene correos.' }); return; }
+  try {
+    await navigator.clipboard.writeText(correos.join(', '));
+    $('sel-copiar').textContent = `Copiados ${correos.length}`;
+    setTimeout(() => { $('sel-copiar').textContent = 'Copiar correos'; }, 1800);
+  } catch (e) { mostrarError(e); }
+});
 $('sel-campana').addEventListener('click', abrirEditorDesdeSegmento);
 
 // --- filtros ---
@@ -775,7 +928,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('buscar').addEventListener('input', () => { guardarFiltros(); alFiltrar(); });
-for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado', 'f-orden', 'f-umbral']) {
+for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado', 'f-correo', 'f-orden', 'f-umbral']) {
   $(id).addEventListener('change', () => { guardarFiltros(); alFiltrar({ inmediato: true }); });
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));

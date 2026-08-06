@@ -513,3 +513,50 @@ tr:hover .accion-fila, tr.marcada .accion-fila { opacity: 1; }
 /* Al refiltrar se mantiene la tabla anterior atenuada: un esqueleto
    parpadeando obliga a releer la pantalla en cada tecla. */
 .envoltura.recargando tbody { opacity: 0.45; transition: opacity .15s; }
+
+/* ============================================================
+   Panel: barras horizontales, un solo tono
+   La identidad la cargan la etiqueta y el número, no el color:
+   el tier ya usa la rampa azul y el desempeño los tonos de estado,
+   y una tercera escala cromática sólo competiría con ellas.
+   ============================================================ */
+.paneles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 8px 22px 30px;
+}
+.grafico h3 { margin: 0 0 2px; font-size: 14px; }
+.grafico .sub { margin: 0 0 12px; }
+
+.fila-barra {
+  display: grid;
+  grid-template-columns: 130px 1fr 58px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.fb-label {
+  color: var(--tinta-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fb-pista {
+  height: 10px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--tinta) 6%, transparent);
+  overflow: hidden;
+}
+.fb-pista i {
+  display: block;
+  height: 100%;
+  background: var(--acento);
+  border-radius: 0 4px 4px 0;   /* extremo de dato redondeado, base recta */
+}
+.fb-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
