@@ -206,29 +206,34 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   const sitio = String(ctx?.sitio || '').trim();
   const remitente = String(ctx?.remitente || '').trim();
   const horarios = String(ctx?.horarios || '').split(',')
-    .map((h) => h.trim()).filter(Boolean).slice(0, 4);
+    .map((h) => h.trim()).filter(Boolean).slice(0, 3);
 
   const f = 'font-family:Arial,Helvetica,sans-serif';
+  /* Un solo margen lateral para todo el correo. Es lo que hace que el ojo
+     lea una columna y no una sucesión de bloques sueltos. */
+  const M = 'padding-left:34px;padding-right:34px';
+
+  /* Las dos cifras se leen como par comparado, así que ambas columnas
+     llevan la misma estructura: número, etiqueta, nota al pie. */
+  const cifra = (num, etiqueta, nota, color) => `
+    <div style="${f};font-size:36px;line-height:1;font-weight:bold;color:${color}">${num}</div>
+    <div style="${f};font-size:12.5px;font-weight:bold;line-height:1.35;
+      color:${MARCA.navy};padding-top:7px">${etiqueta}</div>
+    ${nota ? `<div style="${f};font-size:12px;line-height:1.4;color:#5a6b84;
+      padding-top:4px">${nota}</div>` : ''}`;
 
   const tarjetaSimce = Number.isFinite(simce) ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
            style="background:#f2f6fc;border-left:4px solid ${MARCA.rojo};border-radius:0 10px 10px 0">
       <tr>
-        <td width="46%" style="padding:16px 6px 16px 18px;${f};border-right:1px solid #dde5f0" valign="top">
-          <span style="font-size:34px;font-weight:bold;color:${MARCA.rojo}">${Math.round(simce)}</span>
-          <span style="font-size:13px;font-weight:bold;color:${MARCA.navy}">&nbsp;puntos</span>
-          <div style="font-size:12.5px;font-weight:bold;color:${MARCA.navy};padding-top:4px">
-            SIMCE Matemática 4º básico${anio ? ` ${escaparHtml(anio)}` : ''}</div>
+        <td width="50%" valign="top" style="padding:18px 16px 18px 20px;border-right:1px solid #dde5f0">
+          ${cifra(Math.round(simce), `puntos en SIMCE Matemática<br>4º básico${anio ? ` ${escaparHtml(anio)}` : ''}`, '', MARCA.navy)}
         </td>
-        <td style="padding:16px 18px 16px 16px;${f}" valign="top">
-          ${brecha > 0 ? `
-          <span style="font-size:34px;font-weight:bold;color:${MARCA.rojo}">${brecha}</span>
-          <span style="font-size:13px;font-weight:bold;color:${MARCA.rojo}">&nbsp;puntos bajo el<br>
-            <span style="padding-left:2px">promedio nacional (${ctx?.promedio || 253})</span></span>
-          <div style="font-size:12.5px;color:#5a6b84;padding-top:5px">
-            Una brecha que un método estructurado puede cerrar.</div>`
-    : `<div style="font-size:13px;color:#5a6b84;padding-top:8px">
-            Promedio nacional: ${ctx?.promedio || 253} puntos.</div>`}
+        <td width="50%" valign="top" style="padding:18px 20px 18px 18px">
+          ${brecha > 0
+    ? cifra(brecha, `puntos bajo el promedio<br>nacional (${ctx?.promedio || 253})`,
+      'Una brecha que un método estructurado puede cerrar.', MARCA.rojo)
+    : cifra(ctx?.promedio || 253, 'es el promedio nacional<br>de referencia', '', MARCA.navy)}
         </td>
       </tr>
     </table>` : '';
@@ -237,8 +242,8 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
     <table role="presentation" cellpadding="0" cellspacing="0"><tr>
       ${horarios.map((h) => {
     const [dia, ...resto] = h.split(/\s+/);
-    return `<td style="padding:0 10px 0 0"><table role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td style="background:#eef2f8;border-radius:8px;padding:9px 13px;${f};font-size:13px">
+    return `<td style="padding:0 8px 0 0"><table role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td style="background:#eef2f8;border-radius:8px;padding:9px 14px;${f};font-size:13px;white-space:nowrap">
           <img src="${img('ic-cal-chip')}" width="14" alt="" style="vertical-align:-2px;border:0">
           &nbsp;<b style="color:${MARCA.navy}">${escaparHtml(dia)}</b>
           &nbsp;<span style="color:#3d4c63">${escaparHtml(resto.join(' '))}</span>
@@ -246,18 +251,27 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   }).join('')}
     </tr></table>` : '';
 
-  const beneficios = [
-    ['ic-grafico', 'Mejora significativa en resultados SIMCE.'],
-    ['ic-personas', 'Menos brechas, más estudiantes comprendiendo.'],
+  /* Dos por fila, con el icono al costado del texto: a 600 px, cuatro
+     columnas dejan renglones de tres palabras y bordes desparejos. */
+  const BENEFICIOS = [
+    ['ic-grafico', 'Mejora significativa en los resultados SIMCE.'],
+    ['ic-personas', 'Menos brechas: más estudiantes comprendiendo.'],
     ['ic-lista', 'Docentes con secuencias claras y fáciles de aplicar.'],
     ['ic-diana', 'Progreso medible clase a clase.'],
-  ].map(([icono, txt], i) => `
-    <td width="25%" align="center" valign="top"
-        style="padding:4px 8px;${f};font-size:12px;line-height:1.45;color:#2c4a38;
-        ${i ? 'border-left:1px solid #d8e8dc' : ''}">
-      <img src="${img(icono)}" width="34" alt="" style="border:0"><br>
-      <span style="display:inline-block;padding-top:6px">${txt}</span>
-    </td>`).join('');
+  ];
+  const celdaBeneficio = ([icono, txt]) => `
+    <td width="50%" valign="top" style="padding:7px 12px 7px 0">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+          <td width="40" valign="top" style="padding-top:1px">
+            <img src="${img(icono)}" width="30" alt="" style="display:block;border:0"></td>
+          <td valign="top" style="${f};font-size:13px;line-height:1.5;color:#2c4a38">${txt}</td>
+        </tr>
+      </table>
+    </td>`;
+  const beneficios = `
+    <tr>${celdaBeneficio(BENEFICIOS[0])}${celdaBeneficio(BENEFICIOS[1])}</tr>
+    <tr>${celdaBeneficio(BENEFICIOS[2])}${celdaBeneficio(BENEFICIOS[3])}</tr>`;
 
   const botonWa = wa ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -268,13 +282,13 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
           &nbsp;Agendar reunión de 30 minutos por WhatsApp&nbsp;&nbsp;&#8250;</a>
       </td></tr>
     </table>
-    <div style="${f};font-size:12.5px;color:#5a6b84;padding-top:8px" align="center">
+    <div style="${f};font-size:12.5px;color:#5a6b84;padding-top:9px" align="center">
       o simplemente responda este correo — contesto personalmente.</div>` : `
     <div style="${f};font-size:14px;color:#333333;padding:2px 0 6px">
       Responda este correo y coordinamos una reunión de 30 minutos — contesto personalmente.</div>`;
 
   const filaContacto = (icono, contenido) => `
-    <tr><td style="padding:5px 0;${f};font-size:13px">
+    <tr><td style="padding:0 0 9px;${f};font-size:13px">
       <img src="${img(icono)}" width="16" alt="" style="vertical-align:-3px;border:0">
       &nbsp;&nbsp;${contenido}</td></tr>`;
   const contactos = [
@@ -297,86 +311,105 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   <tr><td align="center" style="padding:26px 12px">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0"
            style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden">
-      <tr><td colspan="2" style="height:5px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
+      <tr><td style="height:5px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
 
-      <tr><td colspan="2" style="padding:24px 32px 4px">
-        <img src="${base}${MARCA.logo}" width="168" alt="JUMP Math Chile"
-             style="display:block;border:0;max-width:168px">
+      <tr><td style="${M};padding-top:24px;padding-bottom:16px">
+        <img src="${base}${MARCA.logo}" width="164" alt="JUMP Math Chile"
+             style="display:block;border:0;max-width:164px">
       </td></tr>
 
-      <tr>
-        <td style="padding:18px 6px 0 32px;${f}" valign="top">
-          <div style="font-size:12px;font-weight:bold;letter-spacing:.09em;
-            text-transform:uppercase;color:${MARCA.rojo}">${colegio}${comuna
-    ? `&nbsp;&nbsp;<span style="color:#8a93a3;font-weight:normal">·&nbsp;&nbsp;${comuna}</span>` : ''}</div>
-          <div style="font-size:25px;line-height:1.25;font-weight:bold;color:${MARCA.navy};
-            padding:6px 0 2px">Una oportunidad concreta para seguir mejorando</div>
-          <div style="font-size:22px;line-height:1.3;color:${MARCA.navy}">en Matemática 4º básico.</div>
-        </td>
-        <td width="215" style="padding:10px 26px 0 0" valign="top" align="right">
-          <img src="${img('ilustracion')}" width="205" alt=""
-               style="display:block;border:0;max-width:205px">
-        </td>
-      </tr>
+      <!-- El nombre del colegio ocupa el ancho completo: es lo primero
+           que el director reconoce y no debe partirse contra la imagen. -->
+      <tr><td style="${M};padding-bottom:2px;${f};font-size:12px;font-weight:bold;
+        letter-spacing:.08em;text-transform:uppercase;color:${MARCA.rojo}">${colegio}${comuna
+    ? `<span style="color:#98a2b3;font-weight:normal">&nbsp;&nbsp;·&nbsp;&nbsp;${comuna}</span>` : ''}</td></tr>
 
-      <tr><td colspan="2" style="padding:14px 32px 14px;${f};font-size:15px;color:#333333">
+      <tr><td style="${M};padding-top:6px;padding-bottom:6px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td valign="middle" style="${f};font-size:24px;line-height:1.3;color:${MARCA.navy}">
+              <b>Una oportunidad concreta</b> para seguir mejorando en
+              <b>Matemática 4º básico.</b>
+            </td>
+            <td width="180" valign="middle" align="right">
+              <img src="${img('ilustracion')}" width="172" alt=""
+                   style="display:block;border:0;max-width:172px">
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <tr><td style="${M};padding-top:8px;padding-bottom:14px;${f};font-size:15px;color:#333333">
         Estimado equipo directivo:
       </td></tr>
 
-      ${tarjetaSimce ? `<tr><td colspan="2" style="padding:0 32px 16px">${tarjetaSimce}</td></tr>` : ''}
+      ${tarjetaSimce ? `<tr><td style="${M};padding-bottom:18px">${tarjetaSimce}</td></tr>` : ''}
 
-      <tr><td colspan="2" style="padding:0 32px 18px">
+      <tr><td style="${M};padding-bottom:6px;${f}">
+        <div style="font-size:17px;font-weight:bold;color:${MARCA.navy};padding-bottom:8px">
+          ¿Qué es JUMP Math?</div>
+        <div style="font-size:14.5px;line-height:1.65;color:#333333">${cuerpo}</div>
+      </td></tr>
+
+      <tr><td style="${M};padding-top:14px;padding-bottom:4px">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                style="background:#f4f6f9;border-radius:999px">
-          <tr><td style="padding:9px 18px;${f};font-size:12px;color:#5a6b84" align="center">
+          <tr><td align="center" style="padding:9px 18px;${f};font-size:12px;color:#5a6b84">
             <img src="${img('ic-globo')}" width="15" alt="" style="vertical-align:-3px;border:0">
             &nbsp;Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
             &nbsp;·&nbsp; Canadá, EE.&nbsp;UU. y España</td></tr>
         </table>
       </td></tr>
 
-      <tr><td colspan="2" style="padding:0 32px 4px;${f}">
-        <div style="font-size:16px;font-weight:bold;color:${MARCA.navy};padding-bottom:6px">
-          ¿Qué es JUMP Math?</div>
-        <div style="font-size:14.5px;line-height:1.6;color:#333333">${cuerpo}</div>
-      </td></tr>
-
-      <tr><td colspan="2" style="padding:16px 32px 0">
+      <tr><td style="${M};padding-top:16px">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                style="background:#eef7f0;border-radius:12px">
-          <tr><td colspan="4" style="padding:16px 18px 8px;${f};font-size:15px;
+          <tr><td colspan="2" style="padding:16px 18px 4px;${f};font-size:15px;
             font-weight:bold;color:#1e6b40">¿Qué logran los colegios con JUMP Math?</td></tr>
-          <tr>${beneficios}</tr>
-          <tr><td colspan="4" style="font-size:0;height:16px">&nbsp;</td></tr>
+          <tr><td colspan="2" style="padding:0 8px 0 18px">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              ${beneficios}
+            </table>
+          </td></tr>
+          <tr><td colspan="2" style="font-size:0;height:14px">&nbsp;</td></tr>
         </table>
       </td></tr>
 
-      <tr>
-        <td width="86" style="padding:22px 0 0 32px" valign="top">
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="background:#eaf0f8;border-radius:50%;width:64px;height:64px" align="center" valign="middle">
-              <img src="${img('ic-cal-navy')}" width="34" alt="" style="border:0;vertical-align:middle">
-            </td></tr></table>
-        </td>
-        <td style="padding:22px 32px 0 14px;${f}" valign="top">
-          <div style="font-size:16.5px;font-weight:bold;color:${MARCA.navy};padding-bottom:4px">
-            ¿Revisamos juntos cómo funciona${comuna ? ` en ${comuna}` : ''}?</div>
-          <div style="font-size:14px;line-height:1.55;color:#333333;padding-bottom:10px">
-            Podemos reunirnos 30 minutos para mostrarles cómo implementarlo
-            y los resultados que han obtenido otros colegios.</div>
-          ${chips}
-        </td>
-      </tr>
+      <!-- El icono acompaña al título; el párrafo, los horarios y el botón
+           arrancan todos en el mismo margen, así la vista baja en línea
+           recta hasta el CTA. -->
+      <tr><td style="${M};padding-top:24px">
+        <table role="presentation" cellpadding="0" cellspacing="0">
+          <tr>
+            <td width="52" valign="middle">
+              <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                <td width="44" height="44" align="center" valign="middle"
+                    style="background:#eaf0f8;border-radius:50%">
+                  <img src="${img('ic-cal-navy')}" width="24" alt="" style="border:0;vertical-align:middle">
+                </td></tr></table>
+            </td>
+            <td valign="middle" style="${f};font-size:16.5px;font-weight:bold;color:${MARCA.navy}">
+              ¿Revisamos juntos cómo funciona${comuna ? ` en ${comuna}` : ''}?</td>
+          </tr>
+        </table>
+      </td></tr>
 
-      <tr><td colspan="2" style="padding:18px 32px 6px">${botonWa}</td></tr>
+      <tr><td style="${M};padding-top:9px;${f};font-size:14px;line-height:1.6;color:#333333">
+        Podemos reunirnos 30 minutos para mostrarles cómo implementarlo
+        y los resultados que han obtenido otros colegios.</td></tr>
 
-      <tr><td colspan="2" style="padding:14px 32px 0">
+      ${chips ? `<tr><td style="${M};padding-top:14px">${chips}</td></tr>` : ''}
+
+      <tr><td style="${M};padding-top:18px">${botonWa}</td></tr>
+
+      <tr><td style="${M};padding-top:18px">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                style="background:#fdefee;border-radius:10px">
           <tr>
-            <td width="52" style="padding:13px 0 13px 16px" valign="middle">
-              <img src="${img('ic-cal-rojo')}" width="30" alt="" style="border:0"></td>
-            <td style="padding:13px 16px 13px 6px;${f};font-size:13px;line-height:1.5;color:#333333">
+            <td width="54" align="center" valign="middle" style="padding:14px 0 14px 14px">
+              <img src="${img('ic-cal-rojo')}" width="28" alt="" style="border:0;display:block"></td>
+            <td valign="middle" style="padding:14px 18px 14px 8px;${f};font-size:13px;
+              line-height:1.55;color:#333333">
               Los programas que comienzan con el <b style="color:${MARCA.rojo}">año escolar 2027</b>
               se están definiendo durante estas semanas, por lo que este es un buen momento
               para evaluarlo.</td>
@@ -384,28 +417,33 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
         </table>
       </td></tr>
 
-      <tr><td colspan="2" style="padding:20px 32px 0">
+      <tr><td style="${M};padding-top:22px">
         <div style="border-top:1px solid #e6e9ef;font-size:0">&nbsp;</div>
       </td></tr>
-      <tr>
-        <td style="padding:6px 6px 26px 32px;${f}" valign="top">
-          <img src="${base}${MARCA.firma}" width="205" alt="${escaparHtml(MARCA.firmante)}"
-               style="display:block;border:0;max-width:205px">
-          <div style="font-size:15px;font-weight:bold;color:${MARCA.navy};padding-top:8px">
-            ${escaparHtml(MARCA.firmante)}</div>
-          <div style="font-size:13px;color:#5a6b84;padding-top:1px">${escaparHtml(MARCA.cargo)}</div>
-        </td>
-        <td width="235" style="padding:14px 32px 26px 16px;border-left:1px solid #e6e9ef" valign="middle">
-          <table role="presentation" cellpadding="0" cellspacing="0">${contactos}</table>
-        </td>
-      </tr>
+
+      <tr><td style="${M};padding-top:14px;padding-bottom:28px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td valign="top" style="${f}">
+              <img src="${base}${MARCA.firma}" width="196" alt="${escaparHtml(MARCA.firmante)}"
+                   style="display:block;border:0;max-width:196px">
+              <div style="font-size:15px;font-weight:bold;color:${MARCA.navy};padding-top:10px">
+                ${escaparHtml(MARCA.firmante)}</div>
+              <div style="font-size:13px;color:#5a6b84;padding-top:2px">${escaparHtml(MARCA.cargo)}</div>
+            </td>
+            <td width="222" valign="top" style="padding-left:20px;border-left:1px solid #e6e9ef">
+              <table role="presentation" cellpadding="0" cellspacing="0">${contactos}</table>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
     </table>
 
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-      <tr><td style="padding:14px 20px;${f};font-size:11px;line-height:1.5;color:#8a93a3" align="center">
+      <tr><td align="center" style="padding:16px 24px;${f};font-size:11px;line-height:1.6;color:#8a93a3">
         Le escribimos porque ${colegio || 'su establecimiento'} figura en el directorio público
-        de establecimientos de MINEDUC. Si prefiere no recibir más información,<br>
-        responda este correo con la palabra BAJA.
+        de establecimientos de MINEDUC.<br>
+        Si prefiere no recibir más información, responda este correo con la palabra BAJA.
       </td></tr>
     </table>
   </td></tr>
