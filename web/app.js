@@ -705,7 +705,9 @@ function abrirEditorDesdeSegmento() {
 
 /* El diseño ya trae el saludo, el dato SIMCE, la propuesta de reunión y
    la firma: este texto alimenta sólo la sección "¿Qué es JUMP Math?". */
-const PLANTILLA = `Es un método de enseñanza de la matemática con evidencia de impacto en estudios controlados. Entrega a los docentes una secuencia de clases estructurada que descompone cada objetivo en pasos que todo el curso puede seguir.`;
+const PLANTILLA = `Es un método de enseñanza de la matemática con evidencia de impacto en estudios controlados. Entrega a los docentes una secuencia de clases estructurada que descompone cada objetivo en pasos que todo el curso puede seguir.
+
+Para 2027 vamos a acompañar de cerca a un grupo acotado de colegios en la implementación, y {{comuna}} es una de las comunas donde queremos partir.`;
 
 function abrirEditor() {
   const c = estado.campanaActual;

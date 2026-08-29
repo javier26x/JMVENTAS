@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JUMP Math · Qué es y qué dice la investigación</title>
+<meta name="description" content="El método, por qué funciona y qué muestran los estudios. Para equipos directivos que evalúan el programa para 2027.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📐</text></svg>">
+<style>
+  /* Página pública enlazada desde el correo. Un solo look, claro y
+     sobrio: se abre desde el teléfono en medio de una jornada. */
+  :root {
+    --navy: #14345c;
+    --rojo: #e8443a;
+    --verde: #1e6b40;
+    --tinta: #26313f;
+    --apagado: #5a6b84;
+    --linea: #e2e7ef;
+    --fondo: #eef1f5;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  /* `display:block` en .cta le gana al [hidden] del navegador, y el botón
+     de WhatsApp se mostraría sin número. */
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--fondo);
+    color: var(--tinta);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .hoja {
+    max-width: 720px;
+    margin: 28px auto;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .filo { height: 5px; background: var(--rojo); }
+  .caja { padding: 0 34px; }
+  @media (max-width: 560px) { .caja { padding: 0 20px; } .hoja { margin: 0; border-radius: 0; } }
+
+  header .caja { padding-top: 26px; padding-bottom: 6px; }
+  .logo { display: block; width: 168px; max-width: 60%; }
+  h1 {
+    font-size: clamp(24px, 5vw, 31px);
+    line-height: 1.22;
+    color: var(--navy);
+    margin: 20px 0 10px;
+    letter-spacing: -0.01em;
+  }
+  .bajada { font-size: 17px; color: var(--apagado); margin: 0 0 4px; }
+
+  h2 {
+    font-size: 20px;
+    color: var(--navy);
+    margin: 34px 0 10px;
+    letter-spacing: -0.01em;
+  }
+  h3 { font-size: 15px; margin: 22px 0 4px; color: var(--navy); }
+  p { margin: 0 0 14px; }
+  a { color: var(--rojo); }
+
+  .pasos { list-style: none; padding: 0; margin: 16px 0 0; counter-reset: paso; }
+  .pasos li {
+    position: relative;
+    padding: 0 0 16px 46px;
+    counter-increment: paso;
+  }
+  .pasos li::before {
+    content: counter(paso);
+    position: absolute; left: 0; top: 1px;
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: #eaf0f8; color: var(--navy);
+    font-weight: 700; font-size: 14px;
+  }
+  .pasos b { color: var(--navy); }
+
+  .marco {
+    border: 1px solid var(--linea);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 18px 0;
+  }
+  .marco.verde { background: #eef7f0; border-color: #d5e8db; }
+  .marco.verde h3 { color: var(--verde); margin-top: 0; }
+  .marco p:last-child { margin-bottom: 0; }
+
+  .lista { margin: 10px 0 0; padding-left: 20px; }
+  .lista li { margin-bottom: 7px; }
+
+  .cita {
+    border-left: 4px solid var(--rojo);
+    background: #f2f6fc;
+    border-radius: 0 10px 10px 0;
+    padding: 14px 18px;
+    margin: 18px 0;
+    font-size: 15px;
+  }
+  .cita p { margin: 0; }
+  .cita .fuente { display: block; margin-top: 8px; font-size: 13px; color: var(--apagado); }
+
+  .cta {
+    display: block;
+    background: #1faa4f;
+    color: #fff;
+    text-decoration: none;
+    text-align: center;
+    font-weight: 700;
+    font-size: 17px;
+    padding: 16px 20px;
+    border-radius: 10px;
+    margin: 8px 0 6px;
+  }
+  .cta.secundario { background: var(--navy); }
+  .bajo-cta { text-align: center; font-size: 13.5px; color: var(--apagado); margin: 0 0 8px; }
+
+  footer {
+    max-width: 720px;
+    margin: 0 auto 30px;
+    padding: 16px 24px 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #8a93a3;
+    text-align: center;
+  }
+  footer a { color: #8a93a3; }
+</style>
+</head>
+<body>
+
+<div class="hoja">
+  <div class="filo"></div>
+
+  <header>
+    <div class="caja">
+      <img class="logo" src="/img/logo-jumpmath.png" alt="JUMP Math Chile">
+      <h1>Un método para que la clase completa entienda matemática</h1>
+      <p class="bajada">Qué es JUMP Math, por qué funciona y qué han medido los
+        estudios. Cinco minutos de lectura, para equipos directivos que están
+        definiendo 2027.</p>
+    </div>
+  </header>
+
+  <section class="caja">
+    <h2>El problema que ataca</h2>
+    <p>En una sala de 4º básico conviven estudiantes que resuelven una división
+      mentalmente y otros que todavía no afirman la resta. La clase avanza al
+      ritmo del promedio, y la brecha se ensancha: el que se quedó atrás deja de
+      entender, deja de participar y decide, a los nueve años, que “no es bueno
+      para las matemáticas”.</p>
+    <p>Esa decisión rara vez se revierte sola. Es la misma brecha que después
+      aparece en el SIMCE, en la PAES y en la elección de carrera.</p>
+
+    <h2>Cómo funciona JUMP Math</h2>
+    <p>JUMP Math nació en Canadá de la mano del matemático John Mighton, que
+      partió haciendo clases particulares a niños etiquetados como “malos para
+      los números” y descubrió que el problema casi nunca era de capacidad, sino
+      de tamaño del paso.</p>
+
+    <ol class="pasos">
+      <li><b>Descomposición en pasos pequeños.</b> Cada objetivo se parte en
+        escalones tan cortos que ningún estudiante queda fuera del siguiente.
+        El avance es visible desde el primer minuto.</li>
+      <li><b>Descubrimiento guiado.</b> El docente no dicta la regla ni deja al
+        curso solo frente al problema: conduce con preguntas hasta que la clase
+        llega a la idea. Lo que se descubre, se retiene.</li>
+      <li><b>Evaluación continua en la clase.</b> Se comprueba a cada paso quién
+        entendió, con la mano levantada o la pizarra individual. El docente no
+        espera a la prueba para enterarse de que la mitad se perdió.</li>
+      <li><b>El curso avanza junto.</b> No hay grupos de nivel dentro de la sala.
+        Quien va más rápido profundiza con extensiones; nadie queda marcado como
+        el del grupo lento.</li>
+    </ol>
+
+    <div class="marco verde">
+      <h3>Lo que cambia para el docente</h3>
+      <p>No es una capacitación que termina en un certificado. Llegan secuencias
+        de clase listas para aplicar —guion, ejercicios y evaluación—, alineadas
+        con las Bases Curriculares. El docente entra a la sala con la clase
+        preparada y dedica su tiempo a enseñar, no a diseñar material.</p>
+    </div>
+
+    <h2>Qué dice la investigación</h2>
+    <p>JUMP Math es uno de los pocos programas de matemática evaluados con
+      <b>ensayos controlados aleatorizados</b>: cursos asignados al azar al
+      programa o a la enseñanza habitual, y comparación de resultados al final
+      del año. Es el estándar más exigente que existe en investigación
+      educativa, y el que separa un método que funciona de uno que sólo suena
+      bien.</p>
+    <p>El estudio de referencia se realizó en escuelas de Ontario, Canadá, con
+      seguimiento de más de mil estudiantes, y fue dirigido por investigadores
+      del Hospital for Sick Children de Toronto. La organización mantiene
+      publicada la investigación disponible y sus resultados:</p>
+    <p><a href="https://jumpmath.org/research/" target="_blank" rel="noopener">
+      Investigación publicada sobre JUMP Math (jumpmath.org)</a></p>
+
+    <!-- ==========================================================
+         AQUÍ VAN LAS CIFRAS, cuando estén verificadas.
+         Este bloque está escrito a propósito sin números: una cifra
+         inventada o mal citada en una página pública destruye la
+         credibilidad que el resto de la pieza construye, y quien la
+         recibe puede comprobarla en un minuto.
+         Para completarlo, pedir a JUMP Math central el tamaño de
+         efecto del estudio de Ontario y reemplazar el texto de abajo
+         por algo del tipo:
+           "Los cursos con JUMP Math avanzaron X% más que los cursos
+            de control en el mismo período (Solomon et al., 2019)."
+         Mientras no haya cifra verificada, este texto funciona: la
+         ausencia de número se convierte en una razón para reunirse.
+         ========================================================== -->
+    <div class="cita">
+      <p>El programa se aplica hoy en Canadá, Estados Unidos y España, con más
+        de veinte años de uso en aula. En Chile está disponible a través de
+        JUMP Math Chile.</p>
+      <span class="fuente">Las cifras específicas de impacto las revisamos
+        juntos en la reunión: preferimos mostrarlas con el contexto de cada
+        estudio —qué se midió, en qué cursos y contra qué— antes que como un
+        titular suelto.</span>
+    </div>
+
+    <h2>Qué proponemos para 2027</h2>
+    <p>Una implementación acotada y medible, no una compra a ciegas:</p>
+    <ul class="lista">
+      <li><b>Un nivel para partir</b> —habitualmente 3º o 4º básico— con el
+        material completo para el año.</li>
+      <li><b>Formación del equipo docente</b> antes de marzo, y acompañamiento
+        durante la implementación.</li>
+      <li><b>Medición desde el día uno</b>: diagnóstico al inicio, seguimiento
+        durante el año y comparación al cierre. Si no se mueve, se sabe.</li>
+    </ul>
+
+    <h2>Qué pasa en una reunión de 30 minutos</h2>
+    <ul class="lista">
+      <li>Revisamos juntos los resultados de matemática de su establecimiento y
+        dónde está la brecha concreta.</li>
+      <li>Mostramos una secuencia de clase real, tal como la recibe el docente.</li>
+      <li>Vemos qué exigiría implementarlo el próximo año: tiempos, costos y
+        alternativas de financiamiento.</li>
+    </ul>
+    <p>Sin compromiso de compra. Si al final no le hace sentido, lo dice y
+      quedamos como amigos.</p>
+  </section>
+
+  <section class="caja" style="padding-bottom: 30px">
+    <a class="cta" href="#" id="wa" hidden>Coordinar la reunión por WhatsApp</a>
+    <p class="bajo-cta" id="bajo-cta">Responda el correo que recibió y coordinamos
+      — contesta la misma persona que lo escribió.</p>
+  </section>
+</div>
+
+<footer>
+  JUMP Math Chile · Santiago de Chile<br>
+  Esta página acompaña al correo enviado a equipos directivos de establecimientos
+  del directorio público de MINEDUC.
+</footer>
+
+<script>
+  /* El número de WhatsApp llega en la dirección desde el correo
+     (/evidencia.html?wa=56912345678), así esta página no guarda ningún
+     número que después haya que ir a cambiar a mano. Sin número, el
+     botón no aparece: más vale una llamada a la acción menos que un
+     botón que abre un chat con nadie. */
+  const wa = new URLSearchParams(location.search).get('wa');
+  if (wa && /^\d{11,13}$/.test(wa)) {
+    const boton = document.getElementById('wa');
+    boton.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(
+      'Hola, vengo de la página de JUMP Math. Quiero coordinar la reunión de 30 minutos.');
+    boton.hidden = false;
+    document.getElementById('bajo-cta').textContent =
+      'o responda el correo que recibió — contesta la misma persona.';
+  }
+</script>
+</body>
+</html>

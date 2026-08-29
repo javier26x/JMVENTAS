@@ -224,7 +224,11 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
   /* La página de evidencia sólo se enlaza cuando quien envía la activa:
      una promesa de pruebas que lleva a una página a medio escribir hace
      más daño que no prometer nada. */
-  const evidencia = ctx?.evidencia && base ? `${base}/evidencia.html` : '';
+  /* La página lleva el WhatsApp en la dirección: quien llega desde el
+     correo encuentra el mismo botón, sin que la página tenga que guardar
+     un número que después habría que ir a cambiar a mano. */
+  const evidencia = ctx?.evidencia && base
+    ? `${base}/evidencia.html${waNum.length >= 11 ? `?wa=${waNum}` : ''}` : '';
   /* Baja en un clic, servida por la función de seguimiento. Quien la usa
      deja de ser una marca de spam: es la salida barata que protege la
      reputación del remitente. Sin función desplegada queda el BAJA por
