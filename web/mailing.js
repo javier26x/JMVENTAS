@@ -15,7 +15,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query,
-  orderBy, limit, where, writeBatch, serverTimestamp, increment,
+  orderBy, limit, where, writeBatch, serverTimestamp, increment, documentId,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 const GMAIL_ENVIAR = 'https://www.googleapis.com/auth/gmail.send';
@@ -145,6 +145,11 @@ const saline = (s, buscar, reemplazo) => s.split(buscar).join(reemplazo);
 const escaparHtml = (s) => String(s ?? '').replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+/** Enlace de baja de un destinatario concreto, que atiende la función de
+ *  seguimiento. Va en la cabecera List-Unsubscribe y en el pie. */
+export const urlBaja = (base, campanaId, rbd) =>
+  (base && campanaId && rbd ? `${base}/t/baja/${campanaId}/${rbd}` : '');
+
 /* Identidad del correo. El logo y la firma viven en Hosting, así que los
    clientes los cargan por URL absoluta. Para usar el logotipo oficial
    basta reemplazar web/img/logo-jumpmath.png y volver a desplegar. */
@@ -159,6 +164,12 @@ const MARCA = {
   firma: '/img/firma-macarena.png?v=2',
   firmante: 'Macarena Bascour F.',
   cargo: 'Directora · JUMP Math Chile',
+  /* Lo primero que se ve en la bandeja es el nombre del remitente, antes
+     que el asunto: una dirección suelta parece automática. */
+  remitenteNombre: 'Macarena Bascour · JUMP Math Chile',
+  /* Identificar a quién escribe, con ciudad, es práctica estándar
+     antispam y sube la confianza del que recibe en frío. */
+  identidad: 'JUMP Math Chile · Santiago de Chile',
 };
 
 /**
@@ -172,7 +183,7 @@ const MARCA = {
  * Tablas e estilos en línea porque es lo único que respetan los clientes
  * de correo.
  */
-export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track }) {
+export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track, breve }) {
   /* Todo enlace pasa por el registro de clics cuando hay seguimiento: un
      clic en el botón de WhatsApp es la señal de compra más fuerte que
      produce esta pieza. */
@@ -210,8 +221,28 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
   const remitente = String(ctx?.remitente || '').trim();
   const horarios = String(ctx?.horarios || '').split(',')
     .map((h) => h.trim()).filter(Boolean).slice(0, 3);
+  /* La página de evidencia sólo se enlaza cuando quien envía la activa:
+     una promesa de pruebas que lleva a una página a medio escribir hace
+     más daño que no prometer nada. */
+  const evidencia = ctx?.evidencia && base ? `${base}/evidencia.html` : '';
+  /* Baja en un clic, servida por la función de seguimiento. Quien la usa
+     deja de ser una marca de spam: es la salida barata que protege la
+     reputación del remitente. Sin función desplegada queda el BAJA por
+     respuesta, que se detecta al revisar el buzón. */
+  const bajaUrl = ctx?.funcion ? urlBaja(base, campanaId, rbd) : '';
 
   const f = 'font-family:Arial,Helvetica,sans-serif';
+
+  /* La línea de vista previa de la bandeja: el dato duro y la facilidad
+     de agendar, que es lo que hace abrir. */
+  const gancho = escaparHtml([
+    brecha > 0
+      ? `${brecha} puntos bajo el promedio nacional en Matemática 4º básico`
+      : 'Matemática 4º básico con un método con evidencia',
+    horarios.length
+      ? `${horarios.length} horarios concretos para una reunión de 30 minutos`
+      : 'Una reunión de 30 minutos para mostrarles cómo funciona',
+  ].join(' · '));
   /* Un solo margen lateral para todo el correo. Es lo que hace que el ojo
      lea una columna y no una sucesión de bloques sueltos. */
   const M = 'padding-left:34px;padding-right:34px';
@@ -303,12 +334,59 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
       `<a href="${enlace(sitio)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(sitio.replace(/^https?:\/\//, ''))}</a>`) : '',
   ].filter(Boolean).join('');
 
-  return `<!doctype html>
+  const cabezaHtml = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<meta name="viewport" content="width=device-width,initial-scale=1"></head>`;
+
+  /* Un seguimiento va dentro del hilo del primer correo: quien lo abre ya
+     vio la lámina completa. Repetirla se lee como ruido publicitario, así
+     que el recordatorio es corto y sólo repone lo accionable —horarios y
+     botón— con la firma para que se reconozca de quién viene. */
+  if (breve) {
+    return `${cabezaHtml}
 <body style="margin:0;padding:0;background:${MARCA.fondo}">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
-  Una oportunidad concreta para matemática en ${colegio || 'su establecimiento'} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  ${gancho} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
+  <tr><td align="center" style="padding:22px 12px">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0"
+           style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden">
+      <tr><td style="height:4px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
+      <tr><td style="${M};padding-top:22px;${f};font-size:15px;line-height:1.65;color:#333333">
+        ${cuerpo}
+      </td></tr>
+      ${chips ? `<tr><td style="${M};padding-top:16px">${chips}</td></tr>` : ''}
+      <tr><td style="${M};padding-top:18px">${botonWa}</td></tr>
+      <tr><td style="${M};padding-top:20px">
+        <div style="border-top:1px solid #e6e9ef;font-size:0">&nbsp;</div>
+      </td></tr>
+      <tr><td style="${M};padding-top:12px;padding-bottom:24px;${f}">
+        <img src="${base}${MARCA.firma}" width="150" alt="${escaparHtml(MARCA.firmante)}"
+             style="display:block;border:0;max-width:150px">
+        <div style="font-size:14px;font-weight:bold;color:${MARCA.navy};padding-top:8px">
+          ${escaparHtml(MARCA.firmante)}</div>
+        <div style="font-size:12.5px;color:#5a6b84;padding-top:2px">${escaparHtml(MARCA.cargo)}</div>
+      </td></tr>
+    </table>
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
+      <tr><td align="center" style="padding:14px 24px;${f};font-size:11px;line-height:1.6;color:#8a93a3">
+        ${escaparHtml(MARCA.identidad)} &nbsp;·&nbsp; Responda con la palabra BAJA${bajaUrl
+      ? ` o <a href="${bajaUrl}" style="color:#8a93a3">use este enlace</a>` : ''}
+        para no recibir más correos.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>${pixel}</body></html>`;
+  }
+
+  return `${cabezaHtml}
+<body style="margin:0;padding:0;background:${MARCA.fondo}">
+<!-- Gmail muestra este texto junto al asunto en la bandeja. Repetir el
+     titular desperdicia la única línea gratis que hay para dar el dato
+     concreto que abre el correo. -->
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
+  ${gancho} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
 </div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
   <tr><td align="center" style="padding:26px 12px">
@@ -352,6 +430,9 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
         <div style="font-size:17px;font-weight:bold;color:${MARCA.navy};padding-bottom:8px">
           ¿Qué es JUMP Math?</div>
         <div style="font-size:14.5px;line-height:1.65;color:#333333">${cuerpo}</div>
+        ${evidencia ? `<div style="font-size:14px;padding-top:10px">
+          <a href="${enlace(evidencia)}" style="color:${MARCA.rojo};font-weight:bold;text-decoration:none">
+            Ver la evidencia en 2 minutos&nbsp;&#8250;</a></div>` : ''}
       </td></tr>
 
       <tr><td style="${M};padding-top:14px;padding-bottom:4px">
@@ -444,9 +525,11 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
 
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
       <tr><td align="center" style="padding:16px 24px;${f};font-size:11px;line-height:1.6;color:#8a93a3">
+        <b style="color:#6b7480">${escaparHtml(MARCA.identidad)}</b><br>
         Le escribimos porque ${colegio || 'su establecimiento'} figura en el directorio público
         de establecimientos de MINEDUC.<br>
-        Si prefiere no recibir más información, responda este correo con la palabra BAJA.
+        Si prefiere no recibir más información, responda este correo con la palabra BAJA${bajaUrl
+    ? ` o <a href="${bajaUrl}" style="color:#8a93a3">use este enlace</a>` : ''}.
       </td></tr>
     </table>
   </td></tr>
@@ -454,7 +537,7 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track 
 }
 
 /** RFC 2822 en base64url, que es lo que espera la API de Gmail. */
-function mensajeCrudo({ para, asunto, html, texto, de }) {
+function mensajeCrudo({ para, asunto, html, texto, de, deNombre, bajaUrl }) {
   const limite = `lim_${Math.random().toString(36).slice(2)}`;
   const b64 = (s) => {
     const bytes = new TextEncoder().encode(s);
@@ -484,11 +567,24 @@ function mensajeCrudo({ para, asunto, html, texto, de }) {
     return trozos.map((t) => `=?UTF-8?B?${b64(t)}?=`).join('\r\n ');
   };
 
+  /* El nombre visible del remitente es lo primero que se lee en la
+     bandeja. Si trae tildes o guiones largos hay que codificarlo igual
+     que el asunto; si no, va entre comillas tal cual. */
+  const nombreMime = (s) => (/[^\x20-\x7e]/.test(s) ? asuntoMime(s)
+    : `"${String(s).replace(/["\\]/g, '')}"`);
+
   const cabeceras = [
-    `From: ${de}`,
+    `From: ${deNombre ? `${nombreMime(deNombre)} <${de}>` : de}`,
     `To: ${para}`,
     `Subject: ${asuntoMime(asunto)}`,
     'MIME-Version: 1.0',
+    /* Gmail exige la baja de un clic a quien envía en volumen, y premia
+       tenerla: pinta su propio botón "Darse de baja", que la gente usa en
+       vez de marcar como spam. */
+    ...(bajaUrl
+      ? [`List-Unsubscribe: <mailto:${de}?subject=BAJA>, <${bajaUrl}>`,
+        'List-Unsubscribe-Post: List-Unsubscribe=One-Click']
+      : [`List-Unsubscribe: <mailto:${de}?subject=BAJA>`]),
     `Content-Type: multipart/alternative; boundary="${limite}"`,
   ].join('\r\n');
 
@@ -524,6 +620,10 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
     nombre: campana.nombre || 'Sin nombre',
     asunto: campana.asunto || '',
     cuerpo: campana.cuerpo || '',
+    asuntoB: campana.asuntoB || '',
+    cuerpoB: campana.cuerpoB || '',
+    seguimientoDe: campana.seguimientoDe || '',
+    evidencia: Boolean(campana.evidencia),
     segmento: campana.segmento || {},
     track: Boolean(campana.track),
     estado: campana.estado || 'borrador',
@@ -548,6 +648,9 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
           estado: 'pendiente',
           aperturas: 0,
           clics: 0,
+          // Un seguimiento hereda el hilo del correo original para poder
+          // contestar dentro de él.
+          ...(p.threadId ? { threadId: p.threadId } : {}),
         }, { merge: true });
       }
       await b.commit();
@@ -587,6 +690,12 @@ export async function borrarCampana(db, id) {
  */
 export async function enviarCampana(db, campana, destinatarios, ctx, alAvanzar) {
   const base = location.origin;
+  // Un seguimiento responde dentro del hilo original y con pieza breve.
+  const esSeguimiento = Boolean(campana.seguimientoDe);
+  // Con variante B el reparto es alternado, no por mitades: el segmento
+  // llega ordenado por dolor o matrícula, y cortarlo en dos daría a cada
+  // variante una población distinta.
+  const usaB = Boolean(campana.asuntoB || campana.cuerpoB);
   let enviados = 0;
   let errores = 0;
 
@@ -599,29 +708,41 @@ export async function enviarCampana(db, campana, destinatarios, ctx, alAvanzar) 
       continue;
     }
 
+    const variante = usaB && i % 2 === 1 ? 'B' : 'A';
     const prospecto = ctx.prospectos.get(String(d.rbd)) || d;
-    const asunto = aplicarVariables(campana.asunto, prospecto, ctx);
-    const texto = aplicarVariables(campana.cuerpo, prospecto, ctx);
+    const asunto = aplicarVariables(
+      variante === 'B' && campana.asuntoB ? campana.asuntoB : campana.asunto, prospecto, ctx);
+    const texto = aplicarVariables(
+      variante === 'B' && campana.cuerpoB ? campana.cuerpoB : campana.cuerpo, prospecto, ctx);
     const html = correoHtml({
-      texto, prospecto, ctx,
+      texto, prospecto, ctx, breve: esSeguimiento,
       base, campanaId: campana.id, rbd: d.rbd, track: campana.track,
     });
 
     try {
-      const res = await gmail('/messages/send', {
-        method: 'POST',
-        body: JSON.stringify({
-          raw: mensajeCrudo({ para: d.email, asunto, html, texto, de: gmailCorreo() }),
+      const peticion = {
+        raw: mensajeCrudo({
+          para: d.email, asunto, html, texto, de: gmailCorreo(),
+          deNombre: MARCA.remitenteNombre,
+          bajaUrl: ctx.funcion ? urlBaja(base, campana.id, d.rbd) : '',
         }),
-      });
+      };
+      /* Con threadId, Gmail cuelga el mensaje del hilo anterior en vez de
+         abrir una conversación nueva: el director ve el recordatorio bajo
+         el correo que ya recibió, con todo el contexto a la vista. */
+      if (esSeguimiento && d.threadId) peticion.threadId = d.threadId;
+
+      const res = await gmail('/messages/send', { method: 'POST', body: JSON.stringify(peticion) });
       await marcar(db, campana.id, d.rbd, {
         estado: 'enviado',
         enviadoEn: serverTimestamp(),
-        threadId: res.threadId || '',
+        threadId: res.threadId || d.threadId || '',
         messageId: res.id || '',
+        variante,
         error: '',
       });
       enviados += 1;
+      await contarEnvio(db);
       alAvanzar?.({ i: i + 1, total: destinatarios.length, d });
     } catch (e) {
       await marcar(db, campana.id, d.rbd, { estado: 'error', error: String(e.message).slice(0, 200) });
@@ -648,6 +769,52 @@ async function marcar(db, campanaId, rbd, datos) {
     datos, { merge: true });
 }
 
+// ---------- calentamiento de la cuenta ----------
+/* Una cuenta que nunca envió correo frío y arranca con 450 mensajes el
+   primer día termina en spam o suspendida, y con ella se quema la base
+   entera. El contador por día es lo que permite subir por escalones y
+   saber cuánto queda de cupo hoy, aunque se envíe desde otro equipo. */
+export function diaHoy(d = new Date()) {
+  const dos = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+}
+
+async function contarEnvio(db) {
+  try {
+    await setDoc(doc(db, 'envios', diaHoy()),
+      { n: increment(1), actualizado: serverTimestamp() }, { merge: true });
+  } catch { /* el contador nunca debe hacer fallar un envío real */ }
+}
+
+/** Envíos por día, del más reciente al más antiguo. */
+export async function historialEnvios(db, dias = 21) {
+  const s = await getDocs(query(collection(db, 'envios'),
+    orderBy(documentId(), 'desc'), limit(dias)));
+  return s.docs.map((d) => ({ dia: d.id, n: Number(d.get('n')) || 0 }));
+}
+
+/* Escalones de calentamiento: cada tanda nueva puede duplicar la mayor
+   anterior, nunca más. Partir en 25 y llegar al tope en dos semanas es
+   el ritmo que Gmail tolera sin castigar la reputación. */
+const ESCALONES = [25, 50, 100, 200, 300, LIMITE_DIARIO];
+
+export function tandaRecomendada(historial) {
+  const hoy = diaHoy();
+  const enviadosHoy = historial.find((h) => h.dia === hoy)?.n || 0;
+  const anteriores = historial.filter((h) => h.dia !== hoy && h.n > 0);
+  const maximo = anteriores.reduce((a, h) => Math.max(a, h.n), 0);
+  const tope = anteriores.length
+    ? (ESCALONES.find((e) => e > maximo) || LIMITE_DIARIO)
+    : ESCALONES[0];
+  return {
+    enviadosHoy,
+    diasActivos: anteriores.length,
+    maximo,
+    tope,
+    resto: Math.max(0, tope - enviadosHoy),
+  };
+}
+
 /** Envía el correo a la propia cuenta conectada, con los datos de un
  *  destinatario real ya reemplazados. No toca la campaña ni el CRM. */
 export async function enviarPrueba(campana, prospecto, ctx) {
@@ -661,6 +828,7 @@ export async function enviarPrueba(campana, prospecto, ctx) {
         para: gmailCorreo(),
         asunto: `[PRUEBA] ${asunto}`,
         html, texto, de: gmailCorreo(),
+        deNombre: MARCA.remitenteNombre,
       }),
     }),
   });
@@ -679,6 +847,7 @@ export async function revisarRespuestas(db, campanaId, alAvanzar) {
     .filter((d) => d.threadId && d.estado !== 'respondido');
   let respuestas = 0;
   let rebotes = 0;
+  let bajas = 0;
   const yo = (gmailCorreo() || '').toLowerCase();
 
   for (const [i, d] of dest.entries()) {
@@ -695,11 +864,25 @@ export async function revisarRespuestas(db, campanaId, alAvanzar) {
         const from = (entrantes[0].payload?.headers || [])
           .find((h) => h.name.toLowerCase() === 'from')?.value || '';
         const rebote = /mailer-daemon|postmaster|delivery.?(status|subsystem)/i.test(from);
+        /* El resumen del mensaje viene con la metadata, sin necesidad del
+           permiso de lectura completa: alcanza para reconocer una baja
+           pedida por respuesta y honrarla sin trabajo manual. */
+        const pidioBaja = entrantes.some((m) => /\bbaja\b|desuscribir|no.{0,12}(escrib|contact)/i
+          .test(String(m.snippet || '')));
         await marcar(db, campanaId, d.rbd, {
-          estado: rebote ? 'rebotado' : 'respondido',
+          estado: rebote ? 'rebotado' : pidioBaja ? 'baja' : 'respondido',
           respondidoEn: serverTimestamp(),
         });
-        if (rebote) rebotes += 1; else respuestas += 1;
+        /* Un rebote duro y una baja valen lo mismo para la lista: no se
+           les vuelve a escribir nunca, ni en la campaña siguiente. */
+        if (rebote || pidioBaja) {
+          await registrarBaja(db, d.rbd, {
+            email: d.email, campanaId, motivo: rebote ? 'rebote' : 'pidio baja',
+          });
+        }
+        if (rebote) rebotes += 1;
+        else if (pidioBaja) bajas += 1;
+        else respuestas += 1;
       }
     } catch (e) {
       if (/401|403|expir/i.test(e.message)) throw e;
@@ -707,12 +890,35 @@ export async function revisarRespuestas(db, campanaId, alAvanzar) {
     alAvanzar?.({ i: i + 1, total: dest.length });
   }
 
-  if (respuestas || rebotes) {
+  if (respuestas || rebotes || bajas) {
     await updateDoc(doc(db, 'campanas', campanaId), {
       'totales.respuestas': increment(respuestas),
       'totales.rebotes': increment(rebotes),
+      'totales.bajas': increment(bajas),
       actualizado: serverTimestamp(),
     });
   }
-  return { respuestas, rebotes, revisados: dest.length };
+  return { respuestas, rebotes, bajas, revisados: dest.length };
+}
+
+// ---------- lista de exclusión ----------
+/* Quien pidió la baja o rebotó no vuelve a recibir correo, ni en esta
+   campaña ni en las de octubre. La marca vive fuera de la campaña —en su
+   propia colección, por RBD— porque una marca dentro de la campaña se
+   pierde en cuanto se arma un segmento nuevo; además, honrar la baja es
+   una obligación legal, no una cortesía. */
+export async function registrarBaja(db, rbd, datos = {}) {
+  await setDoc(doc(db, 'bajas', String(rbd)), {
+    rbd: Number(rbd) || rbd,
+    email: datos.email || '',
+    motivo: datos.motivo || 'baja',
+    campanaId: datos.campanaId || '',
+    fecha: serverTimestamp(),
+  }, { merge: true });
+}
+
+/** Los RBD que nunca deben recibir correo. Se carga una vez por sesión. */
+export async function cargarBajas(db) {
+  const s = await getDocs(query(collection(db, 'bajas'), limit(5000)));
+  return new Set(s.docs.map((d) => d.id));
 }

@@ -50,6 +50,46 @@ async function registrar(campanaId, rbd, campo) {
     .set({ totales: { [real]: FieldValue.increment(1) } }, { merge: true });
 }
 
+/* Baja en un clic. Gmail exige que el enlace de List-Unsubscribe atienda
+   un POST sin pedir confirmación; el GET existe para quien lo abre desde
+   el pie del correo y merece ver una página que le diga qué pasó.
+   La marca queda por RBD, fuera de la campaña, para que ninguna campaña
+   futura la pise. */
+async function darDeBaja(campanaId, rbd) {
+  if (!valido(campanaId) || !valido(rbd)) return false;
+  const dest = db.doc(`campanas/${campanaId}/destinatarios/${rbd}`);
+  const snap = await dest.get();
+  if (!snap.exists) return false;         // no crear documentos desde fuera
+
+  await db.doc(`bajas/${rbd}`).set({
+    rbd: Number(rbd) || rbd,
+    email: snap.get('email') || '',
+    motivo: 'enlace',
+    campanaId,
+    fecha: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await dest.set({ estado: 'baja', bajaEn: FieldValue.serverTimestamp() }, { merge: true });
+  await db.doc(`campanas/${campanaId}`)
+    .set({ totales: { bajas: FieldValue.increment(1) } }, { merge: true });
+  return true;
+}
+
+const PAGINA_BAJA = (ok) => `<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${ok ? 'Baja registrada' : 'Enlace no válido'}</title></head>
+<body style="margin:0;background:#eef1f5;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:460px;margin:14vh auto;background:#fff;border-radius:14px;padding:32px 34px">
+  <div style="height:5px;background:#e8443a;border-radius:3px;margin-bottom:22px"></div>
+  <h1 style="margin:0 0 10px;font-size:20px;color:#14345c">
+    ${ok ? 'Listo, no le escribiremos más' : 'Este enlace ya no es válido'}</h1>
+  <p style="margin:0;font-size:15px;line-height:1.6;color:#333">
+    ${ok
+    ? 'Su establecimiento queda fuera de nuestros envíos. Si fue un error, '
+      + 'basta con responder el último correo y lo revertimos.'
+    : 'Puede pedir la baja respondiendo el correo con la palabra BAJA.'}</p>
+  <p style="margin:22px 0 0;font-size:12px;color:#8a93a3">JUMP Math Chile · Santiago de Chile</p>
+</div></body></html>`;
+
 exports.seguimiento = onRequest({
   region: 'southamerica-west1',
   // Endpoint público: sin tope, un bucle de peticiones se traduce en
@@ -64,6 +104,21 @@ exports.seguimiento = onRequest({
       res.json({ ok: true, servicio: 'seguimiento' });   // sonda para la app
       return;
     }
+    const baja = ruta.match(/^\/t\/baja\/([^/]+)\/([^/?]+)/);
+    if (baja) {
+      let ok = false;
+      try {
+        ok = await darDeBaja(baja[1], baja[2]);
+      } catch (e) {
+        console.error('baja', e);
+      }
+      // Gmail hace el POST en segundo plano y sólo mira el código.
+      if (req.method === 'POST') { res.status(ok ? 200 : 404).end(); return; }
+      res.set('Content-Type', 'text/html; charset=utf-8');
+      res.status(ok ? 200 : 404).send(PAGINA_BAJA(ok));
+      return;
+    }
+
     const m = ruta.match(/^\/t\/(o|c)\/([^/]+)\/([^/?]+)/);
     if (!m) { res.status(404).end(); return; }
     const [, tipo, campanaId, rbd] = m;

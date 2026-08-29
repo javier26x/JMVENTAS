@@ -228,6 +228,23 @@
               <button id="c-recalcular">Recalcular desde los filtros actuales</button>
             </div>
             <div id="segmento-resumen" class="resumen-segmento"></div>
+            <label class="linea-tanda">Correos en esta tanda
+              <input type="number" id="c-tanda" min="1" max="450" step="5">
+            </label>
+            <p class="sub" id="tanda-nota"></p>
+          </div>
+
+          <div class="tarjeta">
+            <h3>Prueba A/B <span class="sub">opcional</span></h3>
+            <p class="sub">Si completas una variante, la mitad del segmento la recibe
+              (uno sí, uno no). Compara los resultados en el detalle de la campaña.</p>
+            <label>Asunto B
+              <input type="text" id="c-asunto-b" placeholder="Otro ángulo del mismo mensaje" autocomplete="off">
+            </label>
+            <label>Mensaje B
+              <textarea id="c-cuerpo-b" rows="5"
+                        placeholder="Déjalo vacío para probar sólo el asunto."></textarea>
+            </label>
           </div>
 
           <div class="tarjeta">
@@ -277,6 +294,15 @@
               Requiere desplegar la función de seguimiento y el plan Blaze.
               Sin ella se registran envíos, errores y respuestas.
             </p>
+            <label class="check">
+              <input type="checkbox" id="c-evidencia">
+              Enlazar la página de evidencia
+            </label>
+            <p class="sub">
+              Añade “Ver la evidencia en 2 minutos” bajo el texto.
+              <a href="/evidencia.html" target="_blank" rel="noopener">Revísala antes de activarla</a>:
+              prometer pruebas y llevar a una página incompleta cuesta más que no prometer nada.
+            </p>
           </div>
 
           <div class="fila-botones">
@@ -293,10 +319,20 @@
     <!-- ============ DETALLE DE CAMPAÑA ============ -->
     <section id="vista-detalle" class="oculto">
       <section class="kpis" id="kpis-campana"></section>
+      <div id="ab-comparacion" class="oculto"></div>
       <div class="fila-botones" style="padding:0 22px 12px">
         <button id="d-revisar">Revisar respuestas en Gmail</button>
+        <button class="primario" id="d-seguimiento">Crear seguimiento a los que no respondieron</button>
         <button id="d-reanudar" class="oculto">Reanudar envío</button>
         <button class="fantasma" id="d-volver">Volver a campañas</button>
+      </div>
+      <div class="filtros-detalle" id="filtros-detalle">
+        <button data-filtro="todos" aria-pressed="true">Todos</button>
+        <button data-filtro="calientes">Calientes · abrieron y no respondieron</button>
+        <button data-filtro="respondieron">Respondieron</button>
+        <button data-filtro="sin-abrir">Sin abrir</button>
+        <button data-filtro="problemas">Errores y rebotes</button>
+        <button class="fantasma" id="d-copiar">Copiar correos de la lista</button>
       </div>
       <div class="envoltura">
         <table>

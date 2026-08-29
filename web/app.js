@@ -72,6 +72,12 @@ const estado = {
   cuentas: [], redes: [], prospectos: [], oportunidades: [],
   ultimoDoc: null, hayMas: false, meta: null, cargando: false, peticion: 0,
   campanas: [], campanaActual: null, destinatarios: [], cancelar: false,
+  // RBD que pidieron la baja o rebotaron: se excluyen de todo segmento.
+  bajas: new Set(),
+  // La función de seguimiento atiende el pixel, los clics y la baja de
+  // un clic; si no está desplegada, el correo sale sin esas piezas.
+  funcion: false,
+  filtroDetalle: 'todos',
   // id -> fila. Se guarda el dato completo, no sólo el id, para que la
   // selección sobreviva al cambio de filtros y a la paginación: si sólo
   // se guardara el id, al filtrar se perdería lo elegido antes.
@@ -161,14 +167,16 @@ const limpiarError = () => $('error').classList.add('oculto');
 
 // ---------- carga de listados ----------
 async function cargarFijos() {
-  const [cuentas, redes, meta] = await Promise.all([
+  const [cuentas, redes, meta, bajas] = await Promise.all([
     getDocs(query(collection(db, 'cuentas'), orderBy('prioridad'))),
     getDocs(query(collection(db, 'redes'), orderBy('matBasica', 'desc'), limit(400))),
     getDoc(doc(db, 'meta', 'carga')).catch(() => null),
+    mail.cargarBajas(db).catch(() => new Set()),
   ]);
   estado.cuentas = cuentas.docs.map((d) => ({ id: d.id, ...d.data() }));
   estado.redes = redes.docs.map((d) => ({ id: d.id, ...d.data() }));
   estado.meta = meta?.exists() ? meta.data() : null;
+  estado.bajas = bajas;
 }
 
 /* Firestore no combina filtros arbitrarios sin un índice por combinación.
@@ -644,24 +652,54 @@ function descripcionSegmento() {
   return p.length ? p.join(' · ') : 'Todos los prospectos cargados';
 }
 
+/* Volver a escribirle a alguien a los pocos días de haberlo hecho no es
+   insistencia, es descuido: para insistir está el seguimiento, que va
+   dentro del hilo anterior. */
+const DIAS_RECONTACTO = 30;
+
 /* La selección manual gana sobre el filtro: si alguien marcó colegios
-   uno por uno, eso es lo que quiere enviar, no lo que quedó en pantalla. */
+   uno por uno, eso es lo que quiere enviar, no lo que quedó en pantalla.
+   Sobre eso se aplican tres podas que protegen la reputación del
+   remitente, y que se informan para que nada desaparezca en silencio. */
 function segmentoActual() {
   const base = estado.seleccion.size
     ? [...estado.seleccion.values()]
     : filtrar(estado[estado.vista]);
-  return base
+  const conCorreo = base
     .filter((p) => mail.primerCorreo(p.email))
     .map((p) => ({ ...p, rbd: p.rbd ?? Number(p.id) }));
+
+  const podas = { baja: 0, repetido: 0, reciente: 0 };
+  const porCasilla = new Map();
+  const limite = Date.now() - DIAS_RECONTACTO * 864e5;
+
+  for (const p of conCorreo) {
+    if (estado.bajas.has(String(p.rbd))) { podas.baja += 1; continue; }
+    if ((p.ultimoContacto?.toMillis?.() || 0) > limite) { podas.reciente += 1; continue; }
+
+    const casilla = mail.primerCorreo(p.email).toLowerCase();
+    const previo = porCasilla.get(casilla);
+    if (!previo) { porCasilla.set(casilla, p); continue; }
+    /* Muchos municipales comparten la casilla del DAEM. Quince correos
+       casi iguales el mismo día a la misma dirección es autodenunciarse
+       como spam: va uno solo, el del colegio más grande, que es el que
+       mejor abre la conversación. */
+    podas.repetido += 1;
+    if ((Number(p.matBasica) || 0) > (Number(previo.matBasica) || 0)) {
+      porCasilla.set(casilla, p);
+    }
+  }
+  return { lista: [...porCasilla.values()], podas };
 }
 
 function abrirEditorDesdeSegmento() {
-  const dest = segmentoActual();
+  const { lista, podas } = segmentoActual();
   estado.campanaActual = {
     id: null, nombre: '', asunto: '', cuerpo: PLANTILLA,
     segmento: { desc: descripcionSegmento() }, track: false,
   };
-  estado.destinatarios = dest;
+  estado.destinatarios = lista;
+  estado.podas = podas;
   abrirEditor();
 }
 
@@ -674,10 +712,15 @@ function abrirEditor() {
   $('c-nombre').value = c.nombre || '';
   $('c-asunto').value = c.asunto || '';
   $('c-cuerpo').value = c.cuerpo || '';
+  $('c-asunto-b').value = c.asuntoB || '';
+  $('c-cuerpo-b').value = c.cuerpoB || '';
   $('c-track-aperturas').checked = Boolean(c.track);
+  $('c-evidencia').checked = Boolean(c.evidencia);
+  delete $('c-tanda').dataset.tocado;
   restaurarContacto();
   $('segmento-desc').textContent = c.segmento?.desc || '—';
   resumenSegmento();
+  pintarTanda();
   previsualizar();
 
   $('vista-listado').classList.add('oculto');
@@ -693,15 +736,71 @@ function resumenSegmento() {
   const d = estado.destinatarios;
   const alumnos = d.reduce((a, p) => a + (Number(p.matBasica) || 0), 0);
   const conDolor = d.filter((p) => Number(p.dolorMate) >= 60).length;
+  const podas = estado.podas || {};
+  const excluidos = [
+    podas.baja ? `${numero(podas.baja)} dados de baja` : '',
+    podas.repetido ? `${numero(podas.repetido)} que comparten casilla` : '',
+    podas.reciente ? `${numero(podas.reciente)} contactados hace menos de ${DIAS_RECONTACTO} días` : '',
+  ].filter(Boolean);
+
   $('segmento-resumen').innerHTML = `
-    <span><b>${numero(d.length)}</b> con correo</span>
+    <span><b>${numero(d.length)}</b> destinatarios</span>
     <span><b>${numero(alumnos)}</b> alumnos</span>
     <span><b>${numero(conDolor)}</b> con dolor 60+</span>
-    <span><b>${numero(d.filter((p) => !p.requiereAte).length)}</b> sin ATE</span>`;
-  if (d.length > mail.LIMITE_DIARIO) {
-    $('segmento-resumen').innerHTML += `<span class="error-texto">Gmail corta cerca de `
-      + `${mail.LIMITE_DIARIO} correos al día: se enviarán por tandas.</span>`;
+    <span><b>${numero(d.filter((p) => !p.requiereAte).length)}</b> sin ATE</span>`
+    + (excluidos.length
+      ? `<span class="sub" style="flex-basis:100%">Fuera del envío: ${excluidos.join(' · ')}.</span>`
+      : '');
+}
+
+/* ---------- calentamiento ----------
+   El ritmo importa tanto como el mensaje: una cuenta nueva que dispara
+   450 correos el primer día no llega a bandeja de entrada, llega a
+   spam, y de ahí no vuelve. */
+async function pintarTanda() {
+  const nota = $('tanda-nota');
+  let plan;
+  try {
+    plan = mail.tandaRecomendada(await mail.historialEnvios(db));
+  } catch {
+    nota.textContent = 'No se pudo leer el historial de envíos; se usará el máximo diario.';
+    return;
   }
+  estado.plan = plan;
+  const campo = $('c-tanda');
+  // Sólo se propone: si alguien ya escribió un número a mano, se respeta.
+  if (!campo.dataset.tocado) campo.value = Math.min(plan.resto, estado.destinatarios.length) || plan.resto;
+
+  nota.innerHTML = plan.diasActivos === 0
+    ? `<b>Primera tanda.</b> Parte con ${plan.tope} correos: una cuenta sin
+       historial que dispara cientos de mensajes termina en spam. Si mañana
+       los rebotes son bajos, el tope sube solo.`
+    : `Hoy llevas <b>${numero(plan.enviadosHoy)}</b> enviados de un tope
+       recomendado de <b>${numero(plan.tope)}</b> (tu mayor día fue
+       ${numero(plan.maximo)}). Quedan <b>${numero(plan.resto)}</b>.`;
+  nota.classList.toggle('error-texto', plan.resto === 0);
+  if (plan.resto === 0) {
+    nota.innerHTML = `<b>Cupo del día agotado.</b> Llevas ${numero(plan.enviadosHoy)}
+      envíos. Seguir hoy es lo que gatilla los bloqueos: retoma mañana con
+      un tope de ${numero(Math.min(plan.tope * 2, mail.LIMITE_DIARIO))}.`;
+  }
+}
+
+/* Un correo en frío que llega el sábado o a medianoche se lee como
+   automático. La ventana buena en colegios es martes a jueves temprano,
+   antes de que parta la jornada. */
+function avisoMomento(ahora = new Date()) {
+  const dia = ahora.getDay();
+  const hora = ahora.getHours();
+  const mes = ahora.getMonth();
+  const nd = ahora.getDate();
+  if (dia === 0 || dia === 6) return 'Es fin de semana: el correo quedará sepultado bajo el del lunes.';
+  if (mes === 8 && nd >= 15 && nd <= 19) return 'Semana de Fiestas Patrias: los colegios están en otra. Mejor la semana siguiente.';
+  if (mes === 1 && nd <= 20) return 'Los colegios aún están en vacaciones: casi nadie leerá el correo.';
+  if (hora < 7 || hora >= 19) return 'Fuera de horario: un correo a esta hora se lee como envío automático.';
+  if (dia === 1 && hora < 10) return 'Lunes a primera hora es cuando más correo compite. Después de las 10 rinde más.';
+  if (dia === 5 && hora >= 15) return 'Viernes por la tarde: la respuesta se pierde en el fin de semana.';
+  return '';
 }
 
 /* El contacto configurado sobrevive entre sesiones: el número de
@@ -713,6 +812,8 @@ function ctxCorreo(extra = {}) {
     sitio: $('c-sitio').value.trim(),
     horarios: $('c-horarios').value.trim(),
     remitente: mail.gmailCorreo() || '',
+    evidencia: $('c-evidencia').checked,
+    funcion: estado.funcion,
     ...extra,
   };
 }
@@ -873,6 +974,9 @@ function previsualizar() {
   marco.style.cssText = 'width:100%;height:460px;border:0;border-radius:8px;margin-top:8px;background:#eef1f5';
   marco.srcdoc = mail.correoHtml({
     texto, prospecto: ejemplo, ctx, base: location.origin, track: false,
+    // Un seguimiento sale en pieza breve: la vista previa tiene que
+    // mostrar lo que de verdad va a llegar.
+    breve: Boolean(estado.campanaActual?.seguimientoDe),
   });
   caja.appendChild(marco);
 }
@@ -895,6 +999,28 @@ async function pintarCampanas() {
   }).join('');
 }
 
+/* Cada corte responde a una acción distinta: "calientes" es la lista de
+   llamadas del día —abrieron el correo y no contestaron—, "problemas"
+   es la limpieza de la base. */
+const FILTROS_DETALLE = {
+  todos: () => true,
+  calientes: (d) => (d.aperturas || 0) > 0
+    && !['respondido', 'rebotado', 'baja', 'error', 'pendiente'].includes(d.estado),
+  respondieron: (d) => d.estado === 'respondido',
+  'sin-abrir': (d) => d.estado === 'enviado' && !(d.aperturas > 0),
+  problemas: (d) => ['error', 'rebotado', 'baja'].includes(d.estado),
+};
+
+const porcentaje = (parte, total) => (total ? Math.round((parte / total) * 100) : 0);
+
+/* Umbrales de una campaña en frío a colegios. Sirven para saber qué
+   corregir: apertura baja es problema de asunto o de remitente; respuesta
+   baja con apertura alta es problema del mensaje. */
+function tono(valor, bueno, malo, invertido = false) {
+  if (invertido) return valor <= bueno ? 'ok' : valor > malo ? 'critico' : 'aviso';
+  return valor >= bueno ? 'ok' : valor < malo ? 'critico' : 'aviso';
+}
+
 async function abrirDetalle(id) {
   estado.campanaActual = await mail.leerCampana(db, id);
   $('vista-listado').classList.add('oculto');
@@ -908,30 +1034,136 @@ async function abrirDetalle(id) {
 
   const dest = await mail.listarDestinatarios(db, id);
   estado.destinatarios = dest;
-  const t = estado.campanaActual?.totales || {};
+  const c = estado.campanaActual;
+  const t = c?.totales || {};
   const pendientes = dest.filter((d) => d.estado === 'pendiente').length;
+  const enviados = dest.filter((d) => !['pendiente', 'error'].includes(d.estado)).length;
+  const abiertos = dest.filter((d) => (d.aperturas || 0) > 0).length;
+  const respondieron = dest.filter((d) => d.estado === 'respondido').length;
+  const problemas = dest.filter((d) => ['error', 'rebotado', 'baja'].includes(d.estado)).length;
   $('d-reanudar').classList.toggle('oculto', pendientes === 0);
+  $('d-seguimiento').classList.toggle('oculto',
+    enviados === 0 || Boolean(c?.seguimientoDe));
+
+  const tasaApertura = porcentaje(abiertos, enviados);
+  const tasaRespuesta = porcentaje(respondieron, enviados);
+  const tasaProblema = porcentaje(problemas, enviados);
 
   $('kpis-campana').innerHTML = [
     { e: 'Destinatarios', v: numero(dest.length), n: 'con correo' },
-    { e: 'Enviados', v: numero(dest.filter((d) => d.estado !== 'pendiente' && d.estado !== 'error').length), n: `${pendientes} pendientes` },
-    { e: 'Respuestas', v: numero(dest.filter((d) => d.estado === 'respondido').length), n: 'la métrica que importa' },
-    { e: 'Errores y rebotes', v: numero(dest.filter((d) => ['error', 'rebotado'].includes(d.estado)).length), n: 'correo inválido o rechazado' },
-    { e: 'Aperturas', v: estado.campanaActual?.track ? numero(t.aperturas) : '—',
-      n: estado.campanaActual?.track
-        ? `${numero(t.aperturasBot)} descartadas como escáner`
-        : 'seguimiento desactivado' },
-  ].map((k) => `<div class="kpi"><div class="etiqueta">${esc(k.e)}</div>
+    { e: 'Enviados', v: numero(enviados), n: pendientes ? `${numero(pendientes)} pendientes` : 'tanda completa' },
+    c?.track
+      ? { e: 'Abrieron', v: `${tasaApertura}%`, t: tono(tasaApertura, 35, 20),
+        n: tasaApertura >= 35 ? `${numero(abiertos)} de ${numero(enviados)}`
+          : 'bajo el objetivo (35%): revisa el asunto y el remitente' }
+      : { e: 'Aperturas', v: '—', n: 'seguimiento desactivado' },
+    { e: 'Respuestas', v: `${tasaRespuesta}%`, t: tono(tasaRespuesta, 3, 1),
+      n: tasaRespuesta >= 3 ? `${numero(respondieron)} respuestas · la métrica que importa`
+        : 'bajo el objetivo (3%): revisa el mensaje y la propuesta' },
+    { e: 'Rebotes y bajas', v: `${tasaProblema}%`, t: tono(tasaProblema, 3, 6, true),
+      n: tasaProblema > 3 ? 'alto: depura la lista antes de la próxima tanda'
+        : `${numero(problemas)} de ${numero(enviados)}` },
+  ].map((k) => `<div class="kpi ${k.t || ''}"><div class="etiqueta">${esc(k.e)}</div>
       <div class="valor">${esc(k.v)}</div><div class="nota">${esc(k.n)}</div></div>`).join('');
 
-  $('cuerpo-destinatarios').innerHTML = dest.map((d) => `<tr>
-    <td><div class="nombre">${esc(d.establecimiento)}</div><div class="sub">RBD ${esc(d.rbd)} · ${esc(d.comuna)}</div></td>
+  pintarComparacion(dest, c);
+  pintarDestinatarios();
+  $('detalle-cargando').classList.add('oculto');
+}
+
+/* Sin esta tabla, una prueba A/B es sólo dos correos distintos: lo que
+   convierte el experimento en decisión es ver las dos columnas juntas. */
+function pintarComparacion(dest, campana) {
+  const caja = $('ab-comparacion');
+  const hayB = dest.some((d) => d.variante === 'B');
+  caja.classList.toggle('oculto', !hayB);
+  if (!hayB) return;
+
+  const fila = (nombre, asunto, filas) => {
+    const env = filas.filter((d) => !['pendiente', 'error'].includes(d.estado)).length;
+    const abr = filas.filter((d) => (d.aperturas || 0) > 0).length;
+    const res = filas.filter((d) => d.estado === 'respondido').length;
+    return `<tr>
+      <td><b>${nombre}</b><div class="sub">${esc(asunto || '(igual que A)')}</div></td>
+      <td class="num">${numero(env)}</td>
+      <td class="num">${campana?.track ? `${porcentaje(abr, env)}%` : '—'}</td>
+      <td class="num">${porcentaje(res, env)}%</td>
+      <td class="num">${numero(res)}</td></tr>`;
+  };
+  caja.innerHTML = `<div class="envoltura">
+    <table>
+      <thead><tr><th>Variante</th><th class="num">Enviados</th>
+        <th class="num">Abrieron</th><th class="num">Respuesta</th>
+        <th class="num">Respuestas</th></tr></thead>
+      <tbody>
+        ${fila('A', campana?.asunto, dest.filter((d) => d.variante !== 'B'))}
+        ${fila('B', campana?.asuntoB, dest.filter((d) => d.variante === 'B'))}
+      </tbody>
+    </table>
+    <p class="sub" style="padding:8px 14px 12px">Con menos de 30 envíos por
+      variante la diferencia todavía es azar; sirve para descartar un desastre,
+      no para elegir ganador.</p>
+  </div>`;
+}
+
+function pintarDestinatarios() {
+  const filtro = FILTROS_DETALLE[estado.filtroDetalle] || FILTROS_DETALLE.todos;
+  // Quien más veces abrió, primero: en una lista de llamadas el orden es
+  // la mitad del trabajo.
+  const filas = estado.destinatarios.filter(filtro)
+    .sort((a, b) => (b.aperturas || 0) - (a.aperturas || 0));
+  const conVariantes = estado.destinatarios.some((d) => d.variante === 'B');
+
+  for (const b of $('filtros-detalle').querySelectorAll('button[data-filtro]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.filtro === estado.filtroDetalle));
+  }
+
+  $('cuerpo-destinatarios').innerHTML = filas.map((d) => `<tr>
+    <td><div class="nombre">${esc(d.establecimiento)}</div>
+      <div class="sub">RBD ${esc(d.rbd)} · ${esc(d.comuna)}${
+  conVariantes ? ` · variante ${esc(d.variante || 'A')}` : ''}</div></td>
     <td>${d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '<span class="sin-contacto">sin correo</span>'}</td>
     <td><span class="env ${esc(d.estado)}">${esc(d.estado)}</span></td>
     <td>${fecha(d.enviadoEn)}</td>
     <td class="num">${numero(d.aperturas)}</td>
     <td class="sub">${esc(d.error || '')}</td></tr>`).join('');
-  $('detalle-cargando').classList.add('oculto');
+  $('vacio-detalle')?.remove();
+  if (!filas.length) {
+    $('cuerpo-destinatarios').innerHTML = `<tr id="vacio-detalle"><td colspan="6" class="sub"
+      style="padding:18px">Nadie en este corte todavía.</td></tr>`;
+  }
+}
+
+/* El seguimiento es la mejora de mayor retorno de toda la operación: un
+   solo toque en frío deja la mayoría de las respuestas sobre la mesa.
+   Va dentro del hilo original, a quien no contestó, y nunca a quien
+   rebotó o pidió la baja. */
+const PLANTILLA_SEGUIMIENTO = `Le escribo por si el correo anterior quedó sepultado: sé cómo son las bandejas en época de matrícula.
+
+Sigue en pie la reunión de 30 minutos para mostrarles cómo se implementa JUMP Math y qué resultados han tenido otros colegios. Si prefiere, respóndame con una hora y yo me acomodo.`;
+
+function crearSeguimiento() {
+  const original = estado.campanaActual;
+  const pendientes = estado.destinatarios.filter(
+    (d) => d.estado === 'enviado' || d.estado === 'abierto');
+  if (!pendientes.length) {
+    mostrarError({ message: 'No quedan destinatarios sin responder en esta campaña.' });
+    return;
+  }
+  estado.campanaActual = {
+    id: null,
+    nombre: `${original.nombre} · seguimiento`,
+    // El "Re:" es lo que hace que Gmail lo muestre como continuación.
+    asunto: /^re:/i.test(original.asunto) ? original.asunto : `Re: ${original.asunto}`,
+    cuerpo: PLANTILLA_SEGUIMIENTO,
+    seguimientoDe: original.id,
+    segmento: { desc: `Sin respuesta en “${original.nombre}”` },
+    track: Boolean(original.track),
+  };
+  estado.destinatarios = pendientes;
+  estado.podas = {};
+  abrirEditor();
+  $('subtitulo').textContent = 'Sale dentro del hilo del primer correo, en pieza breve.';
 }
 
 function progreso(txt) {
@@ -946,13 +1178,30 @@ async function enviar() {
   if (!$('c-asunto').value.trim()) { mostrarError({ message: 'Falta el asunto.' }); return; }
   if (!estado.destinatarios.length) { mostrarError({ message: 'El segmento no tiene destinatarios con correo.' }); return; }
 
-  const tanda = estado.destinatarios.slice(0, mail.LIMITE_DIARIO);
+  // El cupo del día manda: pasarlo es lo que gatilla los bloqueos.
+  await pintarTanda();
+  const pedidos = Number($('c-tanda').value) || estado.plan?.resto || mail.LIMITE_DIARIO;
+  const cupo = Math.min(estado.plan?.resto ?? mail.LIMITE_DIARIO, mail.LIMITE_DIARIO);
+  const tanda = estado.destinatarios.slice(0, Math.min(pedidos, cupo));
+  if (!tanda.length) {
+    mostrarError({ message: 'Se acabó el cupo de hoy. Retoma mañana con el doble.' });
+    return;
+  }
+
+  const momento = avisoMomento();
+  const restantes = estado.destinatarios.length - tanda.length;
   if (!confirm(`Se enviarán ${tanda.length} correos desde ${mail.gmailCorreo()}.\n`
-    + 'Cada uno es un mensaje real. ¿Continuar?')) return;
+    + (restantes ? `Quedan ${restantes} para las próximas tandas.\n` : '')
+    + ($('c-asunto-b').value.trim() || $('c-cuerpo-b').value.trim()
+      ? 'La mitad recibirá la variante B.\n' : '')
+    + (momento ? `\n⚠ ${momento}\n` : '')
+    + '\nCada uno es un mensaje real. ¿Continuar?')) return;
 
   Object.assign(c, {
     nombre: $('c-nombre').value.trim() || 'Sin nombre',
     asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value,
+    asuntoB: $('c-asunto-b').value.trim(), cuerpoB: $('c-cuerpo-b').value.trim(),
+    evidencia: $('c-evidencia').checked,
     track: $('c-track-aperturas').checked,
   });
   c.id = await mail.guardarCampana(db, c, estado.destinatarios, auth.currentUser.uid);
@@ -982,8 +1231,13 @@ async function enviar() {
 async function marcarContactados(destinatarios) {
   for (const d of destinatarios) {
     try {
-      await setDoc(doc(db, 'prospectos', String(d.rbd)),
-        { estadoCrm: 'contactado', actualizado: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, 'prospectos', String(d.rbd)), {
+        estadoCrm: 'contactado',
+        // La fecha es lo que impide que la campaña de la semana próxima
+        // vuelva a escribirle a quien ya recibió este correo.
+        ultimoContacto: serverTimestamp(),
+        actualizado: serverTimestamp(),
+      }, { merge: true });
     } catch { /* el estado del CRM no debe hacer fallar el envío */ }
   }
 }
@@ -1135,17 +1389,20 @@ async function comprobarSeguimiento() {
     const r = await fetch('/t/estado', { cache: 'no-store' });
     const j = r.ok ? await r.json() : null;
     if (!j?.ok) throw new Error('sin servicio');
+    estado.funcion = true;
     casilla.disabled = false;
     casilla.checked = true;
     nota.textContent = 'Seguimiento activo. Las aperturas registradas en los primeros '
       + '15 segundos se marcan como escáner y no cuentan: los filtros antispam cargan '
       + 'las imágenes al recibir, no al leer.';
   } catch {
+    estado.funcion = false;
     casilla.disabled = true;
     casilla.checked = false;
-    nota.textContent = 'La función de seguimiento no está desplegada, así que las '
-      + 'aperturas y clics no se registrarán. Envíos, errores, rebotes y respuestas '
-      + 'sí se miden. Para activarla: firebase deploy --only functions';
+    nota.textContent = 'La función de seguimiento no está desplegada, así que no se '
+      + 'registrarán aperturas ni clics, y el correo saldrá sin el enlace de baja de '
+      + 'un clic que Gmail premia. Envíos, errores, rebotes y respuestas sí se miden. '
+      + 'Para activarla: firebase deploy --only functions';
   }
 }
 
@@ -1153,12 +1410,22 @@ function pintarEstadoGmail(correo, conLectura) {
   const caja = $('gmail-estado');
   if (!correo) return;
   caja.classList.add('ok');
+  /* Un @gmail.com funciona, pero llega peor y se lee peor: el director
+     de un colegio decide en dos segundos si el remitente es una
+     institución o alguien escribiendo desde su cuenta personal. */
+  const personal = /@gmail\.com$/i.test(correo);
   caja.innerHTML = `<div><strong>Gmail conectado:</strong> ${esc(correo)}.
     Los correos saldrán desde esta cuenta. La sesión dura una hora.`
     + (conLectura
-      ? ' Se detectarán respuestas y rebotes automáticamente.</div>'
+      ? ' Se detectarán respuestas y rebotes automáticamente.'
       : ' <em>Sin permiso de lectura: las respuestas habrá que revisarlas '
-        + 'a mano en la bandeja.</em></div>');
+        + 'a mano en la bandeja.</em>')
+    + (personal
+      ? '<br><em>Estás enviando desde una cuenta personal. Un remitente '
+        + '@jumpmath.cl (Google Workspace) entra mejor a bandeja de entrada '
+        + 'y da más confianza a quien recibe.</em>'
+      : '')
+    + '</div>';
   $('d-revisar').disabled = !conLectura;
 }
 
@@ -1169,6 +1436,7 @@ $('c-ver-grande').addEventListener('click', () => {
   const html = mail.correoHtml({
     texto: mail.aplicarVariables($('c-cuerpo').value, ejemplo, ctx),
     prospecto: ejemplo, ctx, base: location.origin, track: false,
+    breve: Boolean(estado.campanaActual?.seguimientoDe),
   });
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   window.open(url, '_blank');
@@ -1180,6 +1448,32 @@ for (const [id, fn] of [
   ['c-whatsapp', () => { guardarContacto(); previsualizar(); }],
   ['c-sitio', () => { guardarContacto(); previsualizar(); }],
 ]) $(id).addEventListener('input', fn);
+
+$('c-evidencia').addEventListener('change', previsualizar);
+$('c-tanda').addEventListener('input', (e) => { e.target.dataset.tocado = '1'; });
+
+$('filtros-detalle').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-filtro]');
+  if (!b) return;
+  estado.filtroDetalle = b.dataset.filtro;
+  pintarDestinatarios();
+});
+
+/* La lista de calientes vale sobre todo fuera de la app: se pega en el
+   teléfono y se llama. */
+$('d-copiar').addEventListener('click', async () => {
+  const filtro = FILTROS_DETALLE[estado.filtroDetalle] || FILTROS_DETALLE.todos;
+  const correos = estado.destinatarios.filter(filtro).map((d) => d.email).filter(Boolean);
+  try {
+    await navigator.clipboard.writeText(correos.join(', '));
+    $('d-copiar').textContent = `${correos.length} copiados`;
+    setTimeout(() => { $('d-copiar').textContent = 'Copiar correos de la lista'; }, 1800);
+  } catch {
+    mostrarError({ message: 'El navegador no dejó copiar al portapapeles.' });
+  }
+});
+
+$('d-seguimiento').addEventListener('click', crearSeguimiento);
 
 $('ag-dias').addEventListener('click', (e) => {
   const b = e.target.closest('.ag-dia');
@@ -1213,7 +1507,9 @@ $('ag-despues').addEventListener('click', () => {
 });
 
 $('c-recalcular').addEventListener('click', () => {
-  estado.destinatarios = segmentoActual();
+  const { lista, podas } = segmentoActual();
+  estado.destinatarios = lista;
+  estado.podas = podas;
   estado.campanaActual.segmento = { desc: descripcionSegmento() };
   $('segmento-desc').textContent = estado.campanaActual.segmento.desc;
   resumenSegmento(); previsualizar();
@@ -1224,6 +1520,8 @@ $('c-guardar').addEventListener('click', async () => {
   Object.assign(c, {
     nombre: $('c-nombre').value.trim() || 'Sin nombre',
     asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value,
+    asuntoB: $('c-asunto-b').value.trim(), cuerpoB: $('c-cuerpo-b').value.trim(),
+    evidencia: $('c-evidencia').checked,
     track: $('c-track-aperturas').checked,
   });
   try {
@@ -1267,6 +1565,9 @@ $('d-revisar').addEventListener('click', async () => {
   $('d-revisar').disabled = true;
   try {
     const r = await mail.revisarRespuestas(db, estado.campanaActual.id);
+    // Las bajas y los rebotes detectados tienen que salir del segmento en
+    // el acto, no en la próxima sesión.
+    if (r.bajas || r.rebotes) estado.bajas = await mail.cargarBajas(db).catch(() => estado.bajas);
     await abrirDetalle(estado.campanaActual.id);
     if (!r.revisados) mostrarError({ message: 'No hay envíos que revisar todavía.' });
   } catch (e) { mostrarError(e); } finally { $('d-revisar').disabled = false; }

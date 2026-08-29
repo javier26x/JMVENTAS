@@ -396,6 +396,33 @@ button.nav[aria-current="true"] {
 .tarjeta h3 { margin: 0 0 4px; font-size: 14px; }
 .tarjeta .sub { margin: 0 0 10px; font-size: 12px; color: var(--tinta-apagada); }
 
+/* Tamaño de la tanda y su nota de calentamiento. */
+.linea-tanda {
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px !important;
+  margin-top: 12px;
+}
+.linea-tanda input { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Semáforo de las métricas de campaña: el color acompaña al texto, nunca
+   lo reemplaza. */
+.kpi.ok      { border-color: color-mix(in srgb, var(--ok) 45%, var(--borde)); }
+.kpi.aviso   { border-color: color-mix(in srgb, var(--aviso) 55%, var(--borde)); }
+.kpi.critico { border-color: color-mix(in srgb, var(--critico) 50%, var(--borde)); }
+.kpi.ok .valor      { color: var(--ok); }
+.kpi.aviso .valor   { color: color-mix(in srgb, var(--aviso) 80%, var(--tinta)); }
+.kpi.critico .valor { color: var(--critico); }
+
+.filtros-detalle { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 22px 12px; }
+.filtros-detalle button { font-size: 12.5px; padding: 6px 12px; }
+.filtros-detalle button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acento) 16%, transparent);
+  border-color: var(--acento);
+}
+#ab-comparacion { padding: 4px 0 0; }
+
 /* Agenda de horarios: elegir día y hora con el dedo en vez de teclear
    una lista separada por comas. */
 .campo-agenda { display: block; }
@@ -483,6 +510,7 @@ button.nav[aria-current="true"] {
 .env.abierto { color: var(--acento); font-weight: 550; }
 .env.respondido { color: var(--ok); font-weight: 600; }
 .env.error, .env.rebotado { color: var(--critico); font-weight: 550; }
+.env.baja { color: var(--critico); font-weight: 550; }
 
 .error-texto { color: var(--critico); }
 

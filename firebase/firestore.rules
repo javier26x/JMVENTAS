@@ -27,7 +27,7 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['estadoCrm', 'email', 'telefono', 'web', 'contacto',
                   'contactoFuente', 'notas', 'proximoPaso', 'responsable',
-                  'actualizado']);
+                  'actualizado', 'ultimoContacto']);
     }
 
     match /prospectos/{rbd} {
@@ -66,6 +66,23 @@ service cloud.firestore {
     match /meta/{doc} {
       allow read: if autenticado();
       allow write: if false;
+    }
+
+    // Lista de exclusion: quien pidio la baja o rebotó no vuelve a
+    // recibir correo, en esta campaña ni en las siguientes. Nadie la
+    // borra desde la app: una baja mal deshecha es una denuncia por
+    // spam y una infraccion a la ley del consumidor.
+    match /bajas/{rbd} {
+      allow read: if autenticado();
+      allow create, update: if autenticado();
+      allow delete: if false;
+    }
+
+    // Envios por dia, para el calentamiento de la cuenta. Un documento
+    // por fecha con un contador; sirve para saber cuanto cupo queda hoy
+    // aunque se envie desde otro equipo.
+    match /envios/{dia} {
+      allow read, write: if autenticado();
     }
 
     // Bitacora de gestion comercial: cada usuario escribe sus propias
