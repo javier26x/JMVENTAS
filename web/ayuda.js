@@ -232,9 +232,12 @@ export const AYUDA = {
     'Aparece como botón grande y en la firma. El chat llega con el nombre del '
     + 'colegio ya escrito, así que el director no tiene que presentarse.'],
   'c-horarios': ['Horarios propuestos',
-    'Hasta tres bloques concretos de día y hora. Proponer fechas responde '
-    + 'mucho mejor que "cuando usted pueda", y los bloques que ya pasaron se '
-    + 'descartan solos.'],
+    'Marca varios días y varias horas: se cruzan, así que "martes y jueves a '
+    + 'las 10 y a las 15" son cuatro bloques con cuatro clics. Cada ficha se '
+    + 'puede quitar por separado. Proponer fechas concretas responde mucho '
+    + 'mejor que "cuando usted pueda", y los bloques que ya pasaron se '
+    + 'descartan solos. Van hasta seis al correo, aunque tres convierten '
+    + 'mejor: elegir entre tres es fácil, entre seis es una tarea.'],
   'c-track-aperturas': ['Aperturas y clics',
     'Añade un pixel invisible y pasa los enlaces por un redirect propio. Las '
     + 'aperturas de los primeros 15 segundos se descartan como escáner: los '

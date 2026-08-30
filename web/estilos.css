@@ -729,6 +729,11 @@ th .ayuda { vertical-align: baseline; }
 
 .ag-horas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .ag-hora { padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ag-hora[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acento) 16%, transparent);
+  border-color: var(--acento);
+  font-weight: 550;
+}
 .ag-hora:disabled { opacity: .38; cursor: default; border-color: var(--borde); }
 
 .ag-elegidos { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }

@@ -287,8 +287,10 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
 
   const sitio = String(ctx?.sitio || '').trim();
   const remitente = String(ctx?.remitente || '').trim();
+  // Hasta seis bloques, en filas de tres: más de tres en una línea no
+  // caben en 600 px y llegan cortados.
   const horarios = String(ctx?.horarios || '').split(',')
-    .map((h) => h.trim()).filter(Boolean).slice(0, 3);
+    .map((h) => h.trim()).filter(Boolean).slice(0, 6);
   /* La página de evidencia sólo se enlaza cuando quien envía la activa:
      una promesa de pruebas que lleva a una página a medio escribir hace
      más daño que no prometer nada. El WhatsApp viaja en la dirección para
@@ -428,18 +430,21 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
     </table>`;
   }
 
-  const chips = horarios.length ? `
-    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-      ${horarios.map((h) => {
+  const chip = (h) => {
     const [dia, ...resto] = h.split(/\s+/);
-    return `<td style="padding:0 8px 0 0"><table role="presentation" cellpadding="0" cellspacing="0">
+    return `<td style="padding:0 8px 8px 0"><table role="presentation" cellpadding="0" cellspacing="0">
         <tr><td style="background:${T.chip};border-radius:8px;padding:9px 14px;${f};
           font-size:13px;white-space:nowrap">
           <b style="color:${T.titulo}">${escaparHtml(dia)}</b>
           &nbsp;<span style="color:${T.chipTinta}">${escaparHtml(resto.join(' '))}</span>
         </td></tr></table></td>`;
-  }).join('')}
-    </tr></table>` : '';
+  };
+  const filasChips = [];
+  for (let i = 0; i < horarios.length; i += 3) filasChips.push(horarios.slice(i, i + 3));
+  const chips = horarios.length
+    ? `<table role="presentation" cellpadding="0" cellspacing="0">${
+      filasChips.map((r) => `<tr>${r.map(chip).join('')}</tr>`).join('')}</table>`
+    : '';
 
   const botonWa = wa ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">

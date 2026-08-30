@@ -1339,6 +1339,7 @@ function restaurarContacto() {
         .map((s) => s.trim()).filter(Boolean).filter(vigente).join(', ');
     }
   } catch { /* nada guardado */ }
+  derivarAgenda(slotsElegidos());
   pintarAgenda();
 }
 
@@ -1350,9 +1351,23 @@ function restaurarContacto() {
 const DIAS_SEM = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const HORAS = ['08:30', '09:00', '10:00', '11:00', '12:00', '15:00', '16:00', '17:00'];
-const MAX_HORARIOS = 3;
+/* Tres bloques es lo que mejor convierte —elegir entre tres es fácil, entre
+   seis es una tarea—, pero a veces hay que abrir el abanico. */
+const MAX_HORARIOS = 6;
 const POR_PAGINA = 5;
-const agenda = { pagina: 0, dia: null };
+
+/* Los días y las horas se marcan por separado y se cruzan: "martes y
+   jueves, a las 10 y a las 15" son cuatro bloques con cuatro clics, no
+   ocho. `excluidos` guarda los que se quitaron a mano, para que el cruce
+   no los vuelva a meter; `sueltos` conserva bloques antiguos escritos sin
+   fecha, que no salen de ningún cruce. */
+const agenda = {
+  pagina: 0,
+  dias: new Set(),
+  horas: new Set(),
+  excluidos: new Set(),
+  sueltos: [],
+};
 
 /** Los próximos días hábiles, desde mañana: nadie agenda para hoy. */
 function diasHabiles() {
@@ -1374,6 +1389,21 @@ const textoSlot = (d, hora) =>
 const slotsElegidos = () => $('c-horarios').value
   .split(',').map((s) => s.trim()).filter(Boolean);
 
+/** El cruce de los días por las horas, menos lo quitado a mano. */
+function slotsDelCruce() {
+  const porFecha = new Map(diasHabiles().map((d) => [d.toDateString(), d]));
+  const salida = [];
+  for (const clave of agenda.dias) {
+    const d = porFecha.get(clave);
+    if (!d) continue;
+    for (const h of agenda.horas) {
+      const t = textoSlot(d, h);
+      if (!agenda.excluidos.has(t)) salida.push(t);
+    }
+  }
+  return [...agenda.sueltos, ...salida];
+}
+
 function ponerSlots(lista) {
   // Ordenados por fecha y hora: proponer las 15:00 antes que las 09:00
   // del mismo día se lee como descuido.
@@ -1382,6 +1412,30 @@ function ponerSlots(lista) {
   guardarContacto();
   pintarAgenda();
   previsualizar();
+}
+
+/** Recalcula el cruce y lo deja en el campo. */
+const recalcularAgenda = () => ponerSlots(slotsDelCruce());
+
+/* Al volver a abrir el editor hay una lista de bloques, no una selección
+   de días y horas. Se deduce cuáles marcar, y lo que el cruce añadiría de
+   más se da por quitado: así lo que se ve es exactamente lo que se había
+   guardado, ni un bloque más. */
+function derivarAgenda(lista) {
+  agenda.dias = new Set();
+  agenda.horas = new Set();
+  agenda.excluidos = new Set();
+  agenda.sueltos = [];
+  for (const t of lista) {
+    const f = fechaSlot(t);
+    const h = String(t).match(/\d{1,2}:\d{2}/)?.[0];
+    if (!f || !h) { agenda.sueltos.push(t); continue; }
+    agenda.dias.add(f.toDateString());
+    agenda.horas.add(h);
+  }
+  for (const t of slotsDelCruce()) {
+    if (!lista.includes(t)) agenda.excluidos.add(t);
+  }
 }
 
 /** Momento del bloque en milisegundos, para ordenarlos. Un texto sin
@@ -1422,40 +1476,44 @@ function vigente(texto) {
 function pintarAgenda() {
   const dias = diasHabiles();
   const pagina = dias.slice(agenda.pagina * POR_PAGINA, (agenda.pagina + 1) * POR_PAGINA);
-  // Al cambiar de página el día elegido puede quedar fuera de vista;
-  // mostrar horas de un día que no se ve confunde.
-  if (!pagina.some((d) => d.toDateString() === agenda.dia)) {
-    agenda.dia = pagina[0]?.toDateString() || null;
-  }
-  const dia = pagina.find((d) => d.toDateString() === agenda.dia);
 
   $('ag-mes').textContent = pagina.length
     ? mayus(pagina[0].toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })) : '';
   $('ag-antes').disabled = agenda.pagina === 0;
   $('ag-despues').disabled = (agenda.pagina + 1) * POR_PAGINA >= dias.length;
 
+  // Un día marcado en otra semana sigue contando aunque no se vea: el
+  // recuento lo dice para que no parezca que se perdió.
+  const fuera = [...agenda.dias].filter((c) => !pagina.some((d) => d.toDateString() === c)).length;
+
   $('ag-dias').innerHTML = pagina.map((d) => `
     <button type="button" class="ag-dia" data-fecha="${d.toDateString()}"
-            aria-pressed="${d.toDateString() === agenda.dia}">
+            aria-pressed="${agenda.dias.has(d.toDateString())}">
       ${DIAS_SEM[d.getDay()].slice(0, 3)}<b>${d.getDate()}</b>
     </button>`).join('');
 
+  $('ag-horas').innerHTML = HORAS.map((h) => `
+    <button type="button" class="ag-hora" data-hora="${h}"
+            aria-pressed="${agenda.horas.has(h)}">${h}</button>`).join('');
+
   const elegidos = slotsElegidos();
-  $('ag-horas').innerHTML = dia ? HORAS.map((h) => {
-    const t = textoSlot(dia, h);
-    const puesto = elegidos.includes(t);
-    const lleno = elegidos.length >= MAX_HORARIOS;
-    return `<button type="button" class="ag-hora" data-hora="${h}"
-      ${puesto || lleno ? 'disabled' : ''}
-      title="${puesto ? 'Ya está propuesto' : lleno ? 'Máximo 3 bloques' : esc(t)}">${h}</button>`;
-  }).join('') : '';
+  const cruce = slotsDelCruce().length;
+  const pista = !agenda.dias.size
+    ? 'Marca uno o varios días.'
+    : !agenda.horas.size
+      ? 'Ahora marca las horas: se aplican a todos los días marcados.'
+      : cruce > MAX_HORARIOS
+        ? `${cruce} bloques para ${agenda.dias.size} días × ${agenda.horas.size} horas: `
+          + `el correo mostrará los primeros ${MAX_HORARIOS}.`
+        : fuera
+          ? `Incluye ${fuera} día${fuera === 1 ? '' : 's'} de otra semana.`
+          : '';
 
   $('ag-elegidos').innerHTML = (elegidos.length
     ? elegidos.map((t, i) => `<span class="chip">${esc(t)}`
       + `<button data-quitar="${i}" title="Quitar">×</button></span>`).join('')
     : '<span class="ag-vacio">Sin bloques: el correo sólo invitará a responder.</span>')
-    + (elegidos.length >= MAX_HORARIOS
-      ? '<span class="ag-vacio">Máximo 3 · quita uno para cambiarlo.</span>' : '');
+    + (pista ? `<span class="ag-vacio">${esc(pista)}</span>` : '');
 }
 
 /* ---------- diseño del correo ----------
@@ -2081,22 +2139,29 @@ $('d-seguimiento').addEventListener('click', crearSeguimiento);
 $('ag-dias').addEventListener('click', (e) => {
   const b = e.target.closest('.ag-dia');
   if (!b) return;
-  agenda.dia = b.dataset.fecha;
-  pintarAgenda();
+  const f = b.dataset.fecha;
+  if (agenda.dias.has(f)) agenda.dias.delete(f); else agenda.dias.add(f);
+  recalcularAgenda();
 });
 
 $('ag-horas').addEventListener('click', (e) => {
   const b = e.target.closest('.ag-hora');
-  if (!b || b.disabled) return;
-  const d = diasHabiles().find((x) => x.toDateString() === agenda.dia);
-  if (d) ponerSlots([...slotsElegidos(), textoSlot(d, b.dataset.hora)]);
+  if (!b) return;
+  const h = b.dataset.hora;
+  if (agenda.horas.has(h)) agenda.horas.delete(h); else agenda.horas.add(h);
+  recalcularAgenda();
 });
 
 $('ag-elegidos').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-quitar]');
   if (!b) return;
   const lista = slotsElegidos();
-  lista.splice(Number(b.dataset.quitar), 1);
+  const [quitado] = lista.splice(Number(b.dataset.quitar), 1);
+  // Sin esto, el cruce lo volvería a poner en el siguiente clic.
+  if (quitado) {
+    agenda.excluidos.add(quitado);
+    agenda.sueltos = agenda.sueltos.filter((t) => t !== quitado);
+  }
   ponerSlots(lista);
 });
 
