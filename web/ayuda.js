@@ -299,6 +299,13 @@ export const AYUDA = {
   'col-c-creada': ['Creada', 'Fecha en que se creó la campaña.'],
 
   // ---------- detalle de campaña ----------
+  'd-editar': ['Editar la campaña',
+    'Cambia el texto, el diseño, el día o la hora de lo que todavía no ha '
+    + 'salido. Al pulsar “Actualizar programación” se vuelven a redactar los '
+    + 'correos pendientes con lo nuevo; los que ya se enviaron no se tocan. Si '
+    + 'el servidor está despachando la campaña en ese momento, avisa y no la '
+    + 'modifica.'],
+
   'd-revisar': ['Revisar respuestas',
     'Recorre los hilos enviados y marca respuestas, rebotes y bajas. Quien '
     + 'rebota o pide la baja queda excluido de todas las campañas futuras, no '

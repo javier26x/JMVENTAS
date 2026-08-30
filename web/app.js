@@ -1734,7 +1734,16 @@ async function abrirDetalle(id) {
   const abiertos = dest.filter((d) => (d.aperturas || 0) > 0).length;
   const respondieron = dest.filter((d) => d.estado === 'respondido').length;
   const problemas = dest.filter((d) => ['error', 'rebotado', 'baja'].includes(d.estado)).length;
-  $('caja-reanudar').classList.toggle('oculto', pendientes === 0);
+  /* Editar tiene sentido mientras quede algo por salir. En una campaña
+     ya enviada no hay nada que cambiar: lo que llegó, llegó. */
+  const editable = pendientes > 0 && c?.estado !== 'enviada';
+  for (const id of ['d-editar', 'ayuda-d-editar']) {
+    $(id).classList.toggle('oculto', !editable);
+  }
+  /* "Reanudar" es para retomar un envío cortado, no para una campaña que
+     está esperando su hora: ahí el camino es Editar. */
+  $('caja-reanudar').classList.toggle('oculto',
+    pendientes === 0 || c?.estado === 'programada');
   $('d-seguimiento').classList.toggle('oculto',
     enviados === 0 || Boolean(c?.seguimientoDe));
 
@@ -2856,6 +2865,28 @@ $('c-prueba').addEventListener('click', async () => {
 $('c-enviar').addEventListener('click', enviar);
 $('c-volver').addEventListener('click', () => { irA('campanas'); pintarCampanas(); });
 $('d-volver').addEventListener('click', () => { irA('campanas'); pintarCampanas(); });
+
+/* La puerta que faltaba. El editor ya sabía editar una campaña
+   programada, pero no había forma de llegar a él desde una campaña
+   existente: los únicos caminos eran crear una nueva o "Reanudar". */
+$('d-editar').addEventListener('click', async () => {
+  const c = estado.campanaActual;
+  if (!c) return;
+  // Los pendientes son lo que todavía se puede cambiar.
+  estado.destinatarios = estado.destinatarios.filter((d) => d.estado === 'pendiente');
+  estado.podas = {};
+  if (!estado.destinatarios.length) {
+    mostrarError({ message: 'Ya no queda ningún correo por salir en esta campaña.' });
+    return;
+  }
+  /* Sin cargarEnCola: esa lista sólo sirve para podar un segmento nuevo,
+     y acá los destinatarios ya están decididos. Consultarla sería hacer
+     esperar al editor por una respuesta que nadie va a mirar. */
+  abrirEditor();
+  $('subtitulo').textContent = c.estado === 'programada'
+    ? 'Cambia lo que quieras y pulsa “Actualizar programación”.'
+    : 'Editando una campaña guardada.';
+});
 
 $('d-revisar').addEventListener('click', async () => {
   if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail para revisar respuestas.' }); return; }
