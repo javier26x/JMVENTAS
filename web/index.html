@@ -378,6 +378,30 @@
             </p>
           </div>
 
+          <div class="tarjeta" id="tarjeta-programar">
+            <h3>Programar el envío <span class="sub">opcional</span>
+              <button type="button" class="ayuda" data-ayuda="c-programar" aria-label="Qué significa">?</button></h3>
+            <p class="sub">Deja la tanda redactada y que salga sola a la hora que
+              elijas, con el navegador cerrado. Lo que se envía es exactamente
+              esta vista previa.</p>
+            <div class="programar-cuando">
+              <label>Día
+                <input type="date" id="c-fecha">
+              </label>
+              <label>Hora
+                <input type="time" id="c-hora" step="900">
+              </label>
+              <button type="button" id="c-lunes" class="fantasma">Lunes 8:00</button>
+              <button type="button" id="c-martes" class="fantasma">Martes 8:00</button>
+            </div>
+            <p class="sub" id="programar-nota"></p>
+            <div class="fila-botones">
+              <button id="c-programar">Programar</button>
+              <button type="button" class="ayuda" data-ayuda="c-programar-boton" aria-label="Qué significa">?</button>
+              <button id="c-autorizar" class="fantasma oculto">Autorizar envío automático</button>
+            </div>
+          </div>
+
           <div class="fila-botones">
             <button id="c-prueba">Enviarme una prueba</button>
             <button type="button" class="ayuda" data-ayuda="c-prueba" aria-label="Qué significa">?</button>

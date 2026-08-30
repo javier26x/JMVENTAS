@@ -9,11 +9,21 @@
 //   firebase deploy --only functions,hosting
 // ============================================================
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 initializeApp();
 const db = getFirestore();
+
+/* Credenciales del cliente OAuth para el envío programado. El id es
+   público por diseño (viaja en cada pantalla de consentimiento); vive
+   acá sólo para que configurar esto sean dos comandos y no un archivo
+   más. El secreto sí es secreto y nunca sale de Secret Manager. */
+const CLIENT_ID = defineSecret('GMAIL_CLIENT_ID');
+const CLIENT_SECRET = defineSecret('GMAIL_CLIENT_SECRET');
 
 // GIF transparente de 1x1: el pixel más pequeño que existe.
 const PIXEL = Buffer.from(
@@ -164,8 +174,265 @@ const PAGINA_WHATSAPP = (app, web) => `<!doctype html><html lang="es"><head>
 </script>
 </body></html>`;
 
+// ============================================================
+// Envío programado
+//
+// El navegador redacta y el servidor despacha. Ese reparto es a
+// propósito: la plantilla, la firma y el seguimiento se arman una sola
+// vez —en la app, donde se pueden ver antes de mandar— y acá sólo se
+// entrega lo ya redactado. Así el correo que sale el lunes a las 8 es
+// byte por byte el que se aprobó el sábado.
+//
+// Para despachar sin nadie delante hace falta un permiso que sobreviva
+// al cierre del navegador. Se guarda un refresh token en `secretos`,
+// una colección que las reglas niegan a todo cliente: sólo la alcanza
+// este código con credenciales de servicio.
+// ============================================================
+const OAUTH = 'https://oauth2.googleapis.com/token';
+const ENVIAR = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
+const LIMITE_DIARIO = 450;
+const PAUSA_MS = 1400;
+
+/* El día se cuenta en Santiago y no en UTC: a las 21:00 de un martes
+   chileno ya es miércoles en Greenwich, y el contador del calentamiento
+   se reiniciaría a mitad de una tanda. */
+const diaSantiago = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+
+async function pedirToken(cuerpo) {
+  const r = await fetch(OAUTH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID.value(), client_secret: CLIENT_SECRET.value(), ...cuerpo,
+    }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error_description || j.error || `HTTP ${r.status}`);
+  return j;
+}
+
+/* Canjea el código del consentimiento por un permiso duradero. Sólo lo
+   puede pedir alguien con sesión iniciada en la app, y queda registrado
+   quién autorizó: es un permiso para enviar correo en nombre de una
+   persona, no un detalle de configuración. */
+async function guardarAutorizacion(code, redirectUri, uid, correo) {
+  /* Google exige que el canje repita el mismo redirect_uri con el que se
+     pidió el consentimiento, así que viene del navegador; pero se acepta
+     sólo si apunta a este mismo sitio, para que nadie pueda usar este
+     endpoint como paso intermedio hacia un destino ajeno. */
+  const t = await pedirToken({
+    code, redirect_uri: redirectUri, grant_type: 'authorization_code',
+  });
+  if (!t.refresh_token) {
+    throw new Error('Google no entregó un permiso duradero. Vuelve a conectar '
+      + 'eligiendo la cuenta y aceptando de nuevo la pantalla de permisos.');
+  }
+  await db.doc('secretos/gmail').set({
+    refreshToken: t.refresh_token,
+    correo: correo || '',
+    autorizadoPor: uid,
+    autorizadoEn: FieldValue.serverTimestamp(),
+    permisos: String(t.scope || ''),
+  });
+  return { correo };
+}
+
+async function tokenDeEnvio() {
+  const snap = await db.doc('secretos/gmail').get();
+  const refresh = snap.get('refreshToken');
+  if (!refresh) throw new Error('sin autorización guardada');
+  const t = await pedirToken({ refresh_token: refresh, grant_type: 'refresh_token' });
+  return { token: t.access_token, correo: snap.get('correo') || '' };
+}
+
+/* Un solo correo. Devuelve el hilo para que un seguimiento posterior
+   pueda colgarse de él, igual que en el envío manual. */
+async function despachar(token, crudo, hilo) {
+  const r = await fetch(ENVIAR, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: crudo, ...(hilo ? { threadId: hilo } : {}) }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error?.message || `HTTP ${r.status}`);
+  return j;
+}
+
+/* Cupo que queda hoy. El calentamiento no se suspende porque el envío
+   sea automático: una cuenta que despacha 450 correos de golpe termina
+   suspendida igual, y con ella se va la base entera. */
+async function cupoDeHoy() {
+  const dia = diaSantiago();
+  const s = await db.doc(`envios/${dia}`).get();
+  return { dia, resto: Math.max(0, LIMITE_DIARIO - (Number(s.get('n')) || 0)) };
+}
+
+/* Marca el prospecto igual que el envío manual: sin esto, un colegio al
+   que le escribió el servidor seguiría figurando como no contactado y
+   la campaña siguiente volvería a escribirle. */
+async function anotarContacto(rbd, nombre, uid) {
+  // update y no set: un destinatario que viene de otra colección no debe
+  // aparecer como prospecto fantasma en la base.
+  await db.doc(`prospectos/${rbd}`).update({
+    estadoCrm: 'contactado',
+    ultimoContacto: FieldValue.serverTimestamp(),
+    actualizado: FieldValue.serverTimestamp(),
+  }).catch(() => { /* el CRM no debe hacer fallar un envío ya despachado */ });
+  // La bitácora va aparte: que el prospecto no exista no es razón para
+  // perder el registro de que el correo salió.
+  await db.collection('actividad').add({
+    rbd: String(rbd), tipo: 'envio', uid: uid || '',
+    texto: `Correo enviado · ${nombre || 'campaña'} (programado)`,
+    creado: FieldValue.serverTimestamp(),
+  }).catch(() => { /* nada */ });
+}
+
+/* Despacha una campaña vencida. Sale antes de que la función se quede
+   sin tiempo y deja el resto para la corrida siguiente: cada correo se
+   marca apenas sale, así que retomar nunca reenvía. */
+async function enviarCampana(campana, token, hastaMs) {
+  const ref = db.doc(`campanas/${campana.id}`);
+  const cupo = await cupoDeHoy();
+  if (!cupo.resto) return { enviados: 0, errores: 0, corte: 'cupo' };
+
+  const dest = await ref.collection('destinatarios')
+    .where('estado', '==', 'pendiente').limit(500).get();
+  // Sólo los que el navegador dejó redactados: el resto del segmento
+  // queda para una tanda posterior y no debe salir hoy.
+  const cola = dest.docs.filter((d) => d.get('crudo')).slice(0, cupo.resto);
+
+  let enviados = 0;
+  let errores = 0;
+  let corte = '';
+
+  for (const d of cola) {
+    if (Date.now() > hastaMs) { corte = 'tiempo'; break; }
+    const rbd = d.id;
+    // Alguien pudo darse de baja entre el sábado y el lunes. Honrarlo
+    // acá es la última oportunidad antes de que el correo salga.
+    const baja = await db.doc(`bajas/${rbd}`).get();
+    if (baja.exists) {
+      await d.ref.update({ estado: 'baja', error: 'dado de baja antes del envío' });
+      continue;
+    }
+    try {
+      const res = await despachar(token, d.get('crudo'), d.get('threadId'));
+      await d.ref.update({
+        estado: 'enviado',
+        enviadoEn: FieldValue.serverTimestamp(),
+        threadId: res.threadId || d.get('threadId') || '',
+        messageId: res.id || '',
+        error: '',
+        crudo: FieldValue.delete(),   // ya cumplió; ocupa 20 KB por fila
+      });
+      enviados += 1;
+      await db.doc(`envios/${cupo.dia}`).set(
+        { n: FieldValue.increment(1), actualizado: FieldValue.serverTimestamp() },
+        { merge: true });
+      await anotarContacto(rbd, campana.nombre, campana.uid);
+    } catch (e) {
+      const msg = String(e.message).slice(0, 200);
+      await d.ref.update({ estado: 'error', error: msg });
+      errores += 1;
+      // Cuota agotada o permiso vencido no se arreglan insistiendo con
+      // los que siguen: se detiene y se conserva lo ya enviado.
+      if (/quota|rate|limit|401|403|expir|invalid_grant/i.test(msg)) { corte = 'cuenta'; break; }
+    }
+    await new Promise((r) => setTimeout(r, PAUSA_MS));
+  }
+
+  if (enviados || errores) {
+    await ref.update({
+      'totales.enviados': FieldValue.increment(enviados),
+      'totales.errores': FieldValue.increment(errores),
+      actualizado: FieldValue.serverTimestamp(),
+    });
+  }
+  return { enviados, errores, corte, quedaron: cola.length - enviados - errores };
+}
+
+exports.correosProgramados = onSchedule({
+  schedule: '*/5 * * * *',
+  timeZone: 'America/Santiago',
+  region: 'southamerica-west1',
+  secrets: [CLIENT_ID, CLIENT_SECRET],
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  // Una sola instancia: dos corridas en paralelo sobre la misma campaña
+  // se pisarían, y el precio de equivocarse es un correo duplicado a un
+  // director que ya desconfía del remitente.
+  maxInstances: 1,
+}, async () => {
+  const ahora = new Date();
+  const vencidas = await db.collection('campanas')
+    .where('estado', '==', 'programada')
+    .where('programadaPara', '<=', ahora)
+    .limit(5).get();
+  if (vencidas.empty) return;
+
+  let token;
+  let correo;
+  try {
+    ({ token, correo } = await tokenDeEnvio());
+  } catch (e) {
+    // Sin permiso no sale nada, y callarlo sería peor que no programar:
+    // la campaña queda marcada para que se vea en la app.
+    for (const c of vencidas.docs) {
+      await c.ref.update({
+        estado: 'error',
+        errorProgramado: `No se pudo enviar: ${String(e.message).slice(0, 160)}. `
+          + 'Vuelve a autorizar el envío programado en la app.',
+      });
+    }
+    console.error('programadas: sin token', e);
+    return;
+  }
+
+  // Ocho minutos de trabajo y un margen para cerrar antes del corte.
+  const hasta = Date.now() + 8 * 60 * 1000;
+
+  for (const c of vencidas.docs) {
+    if (Date.now() > hasta) break;
+    /* Reclamar antes de tocar nada: si una corrida anterior sigue viva,
+       esta se aparta. La marca caduca a los diez minutos para que una
+       función muerta a medio camino no deje la campaña congelada. */
+    const mia = await db.runTransaction(async (tx) => {
+      const s = await tx.get(c.ref);
+      if (s.get('estado') !== 'programada') return false;
+      const desde = s.get('enviandoDesde')?.toMillis?.() || 0;
+      if (Date.now() - desde < 10 * 60 * 1000) return false;
+      tx.update(c.ref, { enviandoDesde: FieldValue.serverTimestamp() });
+      return true;
+    });
+    if (!mia) continue;
+
+    try {
+      const r = await enviarCampana({ id: c.id, ...c.data() }, token, hasta);
+      // Con corte por tiempo o por cupo la campaña sigue programada y la
+      // corrida siguiente retoma donde quedó.
+      const termino = !r.corte || r.corte === 'cuenta';
+      await c.ref.update({
+        estado: termino ? 'enviada' : 'programada',
+        enviandoDesde: FieldValue.delete(),
+        ...(termino ? { enviadaEn: FieldValue.serverTimestamp() } : {}),
+      });
+      console.log(`programadas: ${c.id} desde ${correo}`, r);
+    } catch (e) {
+      await c.ref.update({
+        estado: 'error',
+        enviandoDesde: FieldValue.delete(),
+        errorProgramado: String(e.message).slice(0, 200),
+      });
+      console.error('programadas', c.id, e);
+    }
+  }
+});
+
 exports.seguimiento = onRequest({
   region: 'southamerica-west1',
+  secrets: [CLIENT_ID, CLIENT_SECRET],
   // Endpoint público: sin tope, un bucle de peticiones se traduce en
   // factura. Diez instancias sobran para el volumen de correo real.
   maxInstances: 10,
@@ -175,7 +442,85 @@ exports.seguimiento = onRequest({
     // Detrás de un rewrite de Hosting la ruta puede llegar en originalUrl.
     const ruta = String(req.originalUrl || req.url || req.path || '');
     if (/^\/t\/estado/.test(ruta)) {
-      res.json({ ok: true, servicio: 'seguimiento' });   // sonda para la app
+      // Sonda para la app: qué hay disponible y, si el envío programado
+      // está configurado, con qué cuenta quedó autorizado.
+      let firma = null;
+      try {
+        const s = await db.doc('secretos/gmail').get();
+        if (s.exists) {
+          firma = {
+            correo: s.get('correo') || '',
+            desde: s.get('autorizadoEn')?.toMillis?.() || 0,
+            puedeLeer: /gmail\.readonly/.test(String(s.get('permisos') || '')),
+          };
+        }
+      } catch { /* la sonda nunca debe fallar por esto */ }
+      res.json({
+        ok: true,
+        servicio: 'seguimiento',
+        // El id del cliente OAuth es público; se entrega acá para que la
+        // app no tenga que llevar una copia que se desincronice.
+        clientId: CLIENT_ID.value() || '',
+        programado: Boolean(CLIENT_ID.value() && CLIENT_SECRET.value()),
+        autorizacion: firma,
+      });
+      return;
+    }
+
+    /* Canje del consentimiento por un permiso duradero. Va por el
+       servidor porque el secreto del cliente no puede salir al
+       navegador, y exige sesión iniciada: sin esto, cualquiera que
+       encontrara la URL podría dejar su propia cuenta enviando. */
+    if (/^\/t\/autorizar/.test(ruta)) {
+      if (req.method !== 'POST') { res.status(405).end(); return; }
+      try {
+        const cabecera = String(req.get('Authorization') || '');
+        const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
+        if (!idToken) { res.status(401).json({ error: 'sin sesión' }); return; }
+        const usuario = await getAuth().verifyIdToken(idToken);
+        const code = String(req.body?.code || '');
+        if (!code) { res.status(400).json({ error: 'sin código' }); return; }
+        const destino = String(req.body?.redirectUri || '');
+        const esperado = `https://${req.get('host')}/oauth.html`;
+        if (destino !== esperado) {
+          res.status(400).json({ error: 'destino de autorización no válido' });
+          return;
+        }
+        const r = await guardarAutorizacion(code, destino, usuario.uid, req.body?.correo);
+        res.json({ ok: true, ...r });
+      } catch (e) {
+        console.error('autorizar', e);
+        res.status(400).json({ error: String(e.message).slice(0, 200) });
+      }
+      return;
+    }
+
+    /* Retira el permiso duradero. Tiene que ser tan fácil como darlo:
+       un permiso para enviar correo en nombre de alguien que sólo se
+       puede quitar entrando a la consola de Google es un permiso que
+       nadie quita. */
+    if (/^\/t\/desautorizar/.test(ruta)) {
+      if (req.method !== 'POST') { res.status(405).end(); return; }
+      try {
+        const cabecera = String(req.get('Authorization') || '');
+        const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
+        if (!idToken) { res.status(401).json({ error: 'sin sesión' }); return; }
+        await getAuth().verifyIdToken(idToken);
+        await db.doc('secretos/gmail').delete();
+        // Las campañas que esperaban ya no van a salir: mejor decirlo
+        // ahora que dejarlas en silencio hasta el lunes.
+        const pend = await db.collection('campanas')
+          .where('estado', '==', 'programada').limit(50).get();
+        for (const c of pend.docs) {
+          await c.ref.update({
+            estado: 'borrador',
+            errorProgramado: 'Se retiró la autorización de envío programado.',
+          });
+        }
+        res.json({ ok: true, liberadas: pend.size });
+      } catch (e) {
+        res.status(400).json({ error: String(e.message).slice(0, 200) });
+      }
       return;
     }
     const baja = ruta.match(/^\/t\/baja\/([^/]+)\/([^/?]+)/);

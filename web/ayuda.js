@@ -252,6 +252,21 @@ export const AYUDA = {
     + 'antes de cada campaña.'],
   'c-guardar': ['Guardar borrador',
     'Guarda campaña y destinatarios sin enviar nada.'],
+  'c-programar': ['Programar el envío',
+    'Deja la tanda redactada y guardada para que salga sola a la hora que '
+    + 'elijas, con el navegador cerrado y sin nadie delante. Los correos se '
+    + 'escriben ahora, así que lo que llega es exactamente la vista previa '
+    + 'que tienes al lado; después de programar, cambiar el texto obliga a '
+    + 'cancelar y volver a programar.'],
+
+  'c-programar-boton': ['Programar',
+    'La hora importa tanto como el mensaje: un correo frío que llega un '
+    + 'martes a las 8 aparece arriba en la bandeja del director, y el mismo '
+    + 'correo enviado un viernes a las 19 queda sepultado bajo el fin de '
+    + 'semana. Requiere autorizar una vez el envío automático, que es el '
+    + 'mismo permiso de Gmail pero guardado en el servidor para que siga '
+    + 'sirviendo cuando cierres el navegador.'],
+
   'c-enviar': ['Enviar campaña',
     'Envía uno por uno, con pausa entre correos, guardando el resultado de '
     + 'cada uno apenas ocurre. Si se corta, lo enviado no se pierde y se '

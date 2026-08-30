@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Autorizando el envío programado…</title>
+  <style>
+    body { margin:0; background:#eef1f5; font-family:system-ui,Segoe UI,Arial,sans-serif;
+           display:grid; place-items:center; min-height:100vh; color:#14345c }
+    div  { background:#fff; border-radius:14px; padding:28px 32px; max-width:340px;
+           text-align:center; box-shadow:0 8px 30px rgba(20,52,92,.12) }
+    p    { margin:8px 0 0; font-size:14px; line-height:1.6; color:#5a6b84 }
+  </style>
+</head>
+<body>
+  <!-- Google devuelve acá el código del consentimiento. Esta página no
+       hace nada con él salvo pasárselo a la ventana que la abrió: el
+       canje por un permiso duradero necesita el secreto del cliente y
+       ocurre en el servidor, nunca en el navegador. -->
+  <div>
+    <strong id="titulo">Listo, ya puedes cerrar esta ventana</strong>
+    <p id="detalle">Volviendo a JUMP Math…</p>
+  </div>
+  <script>
+    (function () {
+      var p = new URLSearchParams(location.search);
+      var datos = {
+        fuente: 'jm-oauth',
+        code: p.get('code') || '',
+        state: p.get('state') || '',
+        error: p.get('error') || '',
+      };
+      if (datos.error) {
+        document.getElementById('titulo').textContent = 'No se concedió el permiso';
+        document.getElementById('detalle').textContent =
+          'Puedes cerrar esta ventana e intentarlo de nuevo.';
+      }
+      // El destino es el propio origen: el código no debe viajar a
+      // ninguna otra parte, ni siquiera por descuido.
+      if (window.opener) {
+        try { window.opener.postMessage(datos, location.origin); } catch (e) { /* nada */ }
+        setTimeout(function () { window.close(); }, datos.error ? 2500 : 400);
+      }
+    }());
+  </script>
+</body>
+</html>

@@ -85,6 +85,9 @@ const estado = {
   // La función de seguimiento atiende el pixel, los clics y la baja de
   // un clic; si no está desplegada, el correo sale sin esas piezas.
   funcion: false,
+  // Qué sabe el servidor sobre el envío programado: si está configurado,
+  // con qué cuenta quedó autorizado y con qué id de cliente pedirlo.
+  programado: { disponible: false, clientId: '', autorizacion: null },
   filtroDetalle: 'todos',
   // Filtros de varios valores: id -> conjunto de valores elegidos.
   multi: {},
@@ -1216,6 +1219,7 @@ function abrirEditor() {
   delete $('c-tanda').dataset.tocado;
   restaurarContacto();
   pintarDisenio();
+  pintarProgramar();
   $('segmento-desc').textContent = c.segmento?.desc || '—';
   resumenSegmento();
   pintarTanda();
@@ -1310,6 +1314,8 @@ function ctxCorreo(extra = {}) {
     sitio: $('c-sitio').value.trim(),
     horarios: $('c-horarios').value.trim(),
     remitente: mail.gmailCorreo() || '',
+    // La cuenta que despacha lo programado puede no ser la conectada.
+    remitenteProgramado: estado.programado?.autorizacion?.correo || '',
     evidencia: $('c-evidencia').checked,
     funcion: estado.funcion,
     plantilla: estado.campanaActual?.plantilla || 'lamina',
@@ -1579,9 +1585,14 @@ async function pintarCampanas() {
   $('campanas-vacio').classList.toggle('oculto', estado.campanas.length > 0);
   $('cuerpo-campanas').innerHTML = estado.campanas.map((c) => {
     const t = c.totales || {};
+    const chip = { enviada: 'enviado', programada: 'programado', error: 'malo' }[c.estado]
+      || 'pendiente';
     return `<tr>
       <td><div class="nombre">${esc(c.nombre)}</div><div class="sub">${esc(c.asunto)}</div></td>
-      <td><span class="env ${c.estado === 'enviada' ? 'enviado' : 'pendiente'}">${esc(c.estado)}</span></td>
+      <td><span class="env ${chip}">${esc(c.estado)}</span>${
+        c.estado === 'programada' && c.programadaPara
+          ? `<div class="sub">${esc(cuandoSale(c.programadaPara))}</div>` : ''}${
+        c.errorProgramado ? `<div class="sub malo">${esc(c.errorProgramado)}</div>` : ''}</td>
       <td class="num">${numero(t.destinatarios)}</td>
       <td class="num">${numero(t.enviados)}</td>
       <td class="num">${numero(t.respuestas)}</td>
@@ -2058,6 +2069,11 @@ async function comprobarSeguimiento() {
     const j = r.ok ? await r.json() : null;
     if (!j?.ok) throw new Error('sin servicio');
     estado.funcion = true;
+    estado.programado = {
+      disponible: Boolean(j.programado),
+      clientId: j.clientId || '',
+      autorizacion: j.autorizacion || null,
+    };
     casilla.disabled = false;
     casilla.checked = true;
     nota.textContent = 'Seguimiento activo. Las aperturas registradas en los primeros '
@@ -2065,6 +2081,7 @@ async function comprobarSeguimiento() {
       + 'las imágenes al recibir, no al leer.';
   } catch {
     estado.funcion = false;
+    estado.programado = { disponible: false, clientId: '', autorizacion: null };
     casilla.disabled = true;
     casilla.checked = false;
     nota.textContent = 'La función de seguimiento no está desplegada, así que no se '
@@ -2073,6 +2090,228 @@ async function comprobarSeguimiento() {
       + 'Para activarla: firebase deploy --only functions';
   }
 }
+
+// ---------- envío programado ----------
+/* Programar no es una comodidad: la hora a la que llega un correo frío
+   decide si se lee. Un martes a las 8 de la mañana el director abre la
+   bandeja y el mensaje está arriba; el mismo correo enviado un viernes
+   a las 19 aparece bajo cuarenta más y ya nadie vuelve. */
+
+const DIAS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MESES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+function cuandoSale(t) {
+  const d = t?.toDate?.() || (t instanceof Date ? t : null);
+  if (!d) return '';
+  const dos = (n) => String(n).padStart(2, '0');
+  return `${DIAS_ES[d.getDay()]} ${d.getDate()} ${MESES_ES[d.getMonth()]} · `
+    + `${dos(d.getHours())}:${dos(d.getMinutes())}`;
+}
+
+/* El próximo momento razonable para que un correo caiga arriba en la
+   bandeja: día hábil y temprano. El fin de semana se salta entero. */
+function proximoHabil(hora = 8) {
+  const d = new Date();
+  if (d.getHours() >= hora) d.setDate(d.getDate() + 1);
+  d.setHours(hora, 0, 0, 0);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+function ponerCuando(d) {
+  const dos = (n) => String(n).padStart(2, '0');
+  $('c-fecha').value = `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+  $('c-hora').value = `${dos(d.getHours())}:${dos(d.getMinutes())}`;
+}
+
+function leerCuando() {
+  const [f, h] = [$('c-fecha').value, $('c-hora').value];
+  if (!f || !h) return null;
+  const [a, m, dia] = f.split('-').map(Number);
+  const [hh, mm] = h.split(':').map(Number);
+  const d = new Date(a, m - 1, dia, hh, mm, 0, 0);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/* Un permiso de Google para una app sin verificar caduca a los siete
+   días. Avisarlo antes vale más que descubrirlo el lunes por un correo
+   que nunca salió. */
+const DIAS_PERMISO = 7;
+
+function pintarProgramar() {
+  const nota = $('programar-nota');
+  const boton = $('c-programar');
+  const autorizar = $('c-autorizar');
+  const p = estado.programado || {};
+  const c = estado.campanaActual || {};
+  if (!leerCuando()) ponerCuando(proximoHabil());
+
+  const cuenta = p.autorizacion?.correo || '';
+  const dias = p.autorizacion?.desde
+    ? Math.floor((Date.now() - p.autorizacion.desde) / 864e5) : null;
+
+  autorizar.classList.toggle('oculto', !p.disponible);
+  autorizar.textContent = cuenta ? 'Volver a autorizar' : 'Autorizar envío automático';
+
+  // Una campaña ya programada no se vuelve a programar: se cancela.
+  if (c.estado === 'programada') {
+    boton.dataset.modo = 'cancelar';
+    boton.textContent = 'Cancelar programación';
+    boton.disabled = false;
+    nota.className = 'sub';
+    nota.textContent = `Sale ${cuandoSale(c.programadaPara)} desde `
+      + `${c.remitenteProgramado || cuenta}. Para cambiar el texto hay que `
+      + 'cancelar primero: lo que va a salir ya está redactado.';
+    return;
+  }
+
+  boton.dataset.modo = 'programar';
+  boton.textContent = 'Programar';
+
+  if (!estado.funcion) {
+    boton.disabled = true;
+    nota.className = 'sub malo';
+    nota.textContent = 'Necesita la función desplegada: firebase deploy --only functions';
+    return;
+  }
+  if (!p.disponible) {
+    boton.disabled = true;
+    nota.className = 'sub malo';
+    nota.textContent = 'Falta configurar las credenciales del envío programado en el '
+      + 'servidor. Está explicado en docs/campana.md, sección "Programar el envío".';
+    return;
+  }
+  if (!cuenta) {
+    boton.disabled = true;
+    nota.className = 'sub';
+    nota.textContent = 'Falta autorizar una vez para que el correo pueda salir con el '
+      + 'navegador cerrado. Es el mismo permiso de Gmail, pero guardado en el servidor.';
+    return;
+  }
+
+  boton.disabled = false;
+  nota.className = 'sub';
+  /* El aviso se evalúa sobre la hora elegida y no sobre ahora: al
+     programar, lo único que importa es cómo se va a leer el correo
+     cuando llegue. */
+  const momento = avisoMomento(leerCuando());
+  const avisos = [momento, `Saldrá desde ${cuenta}.`].filter(Boolean);
+  if (momento) nota.className = 'sub malo';
+  /* El remitente del correo programado es la cuenta autorizada, no la
+     conectada ahora: si no coinciden, el que firma no es el que se ve
+     arriba en la pantalla y conviene decirlo antes y no después. */
+  if (mail.gmailCorreo() && cuenta !== mail.gmailCorreo()) {
+    avisos.push(`Ojo: ahora estás conectado como ${mail.gmailCorreo()}, `
+      + 'pero el envío programado usa la cuenta autorizada.');
+  }
+  if (dias !== null && dias >= DIAS_PERMISO - 1) {
+    avisos.push('El permiso está por caducar (Google los caduca a los siete días '
+      + 'mientras la aplicación no esté verificada): vuelve a autorizar.');
+  }
+  nota.textContent = avisos.join(' ');
+}
+
+async function autorizarProgramado() {
+  const b = $('c-autorizar');
+  b.disabled = true;
+  try {
+    const r = await mail.autorizarProgramado(auth, estado.programado.clientId,
+      { leer: mail.puedeLeer() });
+    estado.programado.autorizacion = { correo: r.correo || '', desde: Date.now() };
+    avisar(`Envío automático autorizado${r.correo ? ` para ${r.correo}` : ''}.`);
+    pintarProgramar();
+  } catch (e) { mostrarError(e); } finally { b.disabled = false; }
+}
+
+async function programar() {
+  const c = estado.campanaActual;
+  const cuenta = estado.programado?.autorizacion?.correo || '';
+  const cuando = leerCuando();
+  if (!cuando) { mostrarError({ message: 'Elige el día y la hora.' }); return; }
+  if (cuando.getTime() < Date.now() + 60000) {
+    mostrarError({ message: 'Esa hora ya pasó. Elige un momento futuro.' });
+    return;
+  }
+  if (!$('c-asunto').value.trim()) { mostrarError({ message: 'Falta el asunto.' }); return; }
+  if (!estado.destinatarios.length) {
+    mostrarError({ message: 'El segmento no tiene destinatarios con correo.' });
+    return;
+  }
+
+  await pintarTanda();
+  const pedidos = Number($('c-tanda').value) || mail.LIMITE_DIARIO;
+  const tanda = estado.destinatarios.slice(0, Math.min(pedidos, mail.LIMITE_DIARIO));
+  const restantes = estado.destinatarios.length - tanda.length;
+
+  const momento = avisoMomento(cuando);
+  if (!confirm(`Se programarán ${tanda.length} correos para el `
+    + `${cuandoSale(cuando)}, desde ${cuenta}.\n`
+    + (restantes ? `Quedan ${restantes} para tandas posteriores.\n` : '')
+    + (momento ? `\n⚠ ${momento}\n` : '')
+    + '\nSaldrán solos, aunque tengas el navegador cerrado. ¿Continuar?')) return;
+
+  Object.assign(c, {
+    nombre: $('c-nombre').value.trim() || 'Sin nombre',
+    asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value,
+    asuntoB: $('c-asunto-b').value.trim(), cuerpoB: $('c-cuerpo-b').value.trim(),
+    evidencia: $('c-evidencia').checked,
+    track: $('c-track-aperturas').checked,
+  });
+
+  $('c-programar').disabled = true;
+  try {
+    const prospectos = new Map(estado.destinatarios.map((p) => [String(p.rbd), p]));
+    const r = await mail.programarCampana(db, c, tanda,
+      ctxCorreo({ prospectos, remitente: cuenta, remitenteProgramado: cuenta }),
+      auth.currentUser.uid, cuando,
+      ({ i, total }) => progreso(`Redactando ${i}/${total}…`));
+    c.id = r.id;
+    c.estado = 'programada';
+    c.programadaPara = cuando;
+    c.remitenteProgramado = cuenta;
+    progreso(`${r.listos} correos listos y programados.`);
+    avisar(`Programado: ${r.listos} correos saldrán el ${cuandoSale(cuando)}.`);
+    pintarProgramar();
+    await pintarCampanas();
+  } catch (e) {
+    mostrarError(e);
+  } finally { $('c-programar').disabled = false; }
+}
+
+async function cancelarProgramacion() {
+  const c = estado.campanaActual;
+  if (!confirm('La campaña vuelve a borrador y no saldrá sola. ¿Cancelar la programación?')) return;
+  try {
+    await mail.cancelarProgramacion(db, c.id);
+    c.estado = 'borrador';
+    delete c.programadaPara;
+    avisar('Programación cancelada. La campaña queda como borrador.');
+    pintarProgramar();
+    await pintarCampanas();
+  } catch (e) { mostrarError(e); }
+}
+
+$('c-autorizar').addEventListener('click', autorizarProgramado);
+
+/* Dos atajos y no uno: el lunes a las 8 es el que la gente pide, pero
+   compite con todo el correo del fin de semana; el martes a la misma
+   hora llega a una bandeja vacía. Están los dos a la vista y el aviso
+   dice cuál es cuál, en vez de esconder la opción peor. */
+function atajoDia(diaSemana) {
+  const d = new Date();
+  d.setDate(d.getDate() + ((diaSemana + 7 - d.getDay()) % 7 || 7));
+  d.setHours(8, 0, 0, 0);
+  ponerCuando(d);
+  pintarProgramar();
+}
+$('c-lunes').addEventListener('click', () => atajoDia(1));
+$('c-martes').addEventListener('click', () => atajoDia(2));
+for (const id of ['c-fecha', 'c-hora']) {
+  $(id).addEventListener('change', pintarProgramar);
+}
+$('c-programar').addEventListener('click', () => (
+  $('c-programar').dataset.modo === 'cancelar' ? cancelarProgramacion() : programar()));
 
 function pintarEstadoGmail(correo, conLectura) {
   const caja = $('gmail-estado');

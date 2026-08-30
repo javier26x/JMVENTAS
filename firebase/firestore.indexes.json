@@ -307,6 +307,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "campanas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "programadaPara",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

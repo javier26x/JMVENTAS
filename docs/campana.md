@@ -75,6 +75,57 @@ semana) y viernes por la tarde (la respuesta se pierde).
 
 La app avisa cuando el momento del envío cae en una franja mala.
 
+### Programar el envío
+
+En el editor de campaña, la tarjeta **Programar el envío** deja la tanda
+redactada y guardada para que salga sola a la hora elegida, con el navegador
+cerrado. Los correos se escriben en el momento de programar, así que lo que
+llega es exactamente la vista previa; para cambiar el texto hay que cancelar la
+programación y volver a programar.
+
+El aviso de momento se evalúa sobre la **hora elegida**, no sobre ahora: si se
+programa un lunes a las 8, la app lo dice antes de aceptar.
+
+**Montaje, una sola vez.** Enviar con el navegador cerrado exige un permiso de
+Gmail que sobreviva a la sesión, y eso necesita las credenciales del cliente
+OAuth del proyecto.
+
+1. En [Google Cloud Console → Credenciales](https://console.cloud.google.com/apis/credentials),
+   proyecto `jmventas-aab3c`, abrir el **ID de cliente de OAuth 2.0** de tipo
+   *Aplicación web* (el que ya usa Firebase Auth).
+2. En **URI de redireccionamiento autorizados**, agregar:
+   `https://jmventas-aab3c.web.app/oauth.html`
+   y `https://jmventas-aab3c.firebaseapp.com/oauth.html`. Guardar.
+3. Copiar el **ID de cliente** y el **secreto de cliente**, y dejarlos en Secret
+   Manager:
+
+```bash
+npx firebase-tools functions:secrets:set GMAIL_CLIENT_ID --project jmventas-aab3c
+npx firebase-tools functions:secrets:set GMAIL_CLIENT_SECRET --project jmventas-aab3c
+npx firebase-tools deploy --only functions,firestore --project jmventas-aab3c
+```
+
+Si se despliega antes de crear los secretos, la CLI los pide durante el
+despliegue; hay que tener los dos valores a mano.
+
+4. En la app, botón **Autorizar envío automático**: es la misma pantalla de
+   permisos de Gmail, pero el permiso queda guardado en el servidor. La cuenta
+   que se autorice ahí es la que va a firmar los correos programados.
+
+**Lo que hay que saber.**
+
+- **El permiso caduca a los siete días** mientras la aplicación no esté
+  verificada por Google. La app avisa cuando está por vencer; basta con volver a
+  pulsar *Autorizar*. Con el dominio propio en Workspace (ver Pendientes) el
+  cliente OAuth pasa a *Interno* y deja de caducar.
+- El permiso se guarda en la colección `secretos`, que las reglas niegan a todo
+  cliente: sólo lo alcanzan las funciones. Se retira desde la misma tarjeta, y
+  al retirarlo las campañas que esperaban vuelven a borrador.
+- El calentamiento sigue vigente: el servidor respeta el cupo del día (contado
+  en hora de Chile) y, si no alcanza, retoma en la corrida siguiente.
+- Antes de cada correo se vuelve a mirar la lista de bajas: quien se dio de baja
+  el domingo no recibe el correo del lunes.
+
 ---
 
 ## 4. El circuito de una campaña

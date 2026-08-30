@@ -14,8 +14,9 @@ import {
   GoogleAuthProvider, signInWithPopup,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
 import {
-  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query,
-  orderBy, limit, where, writeBatch, serverTimestamp, increment, documentId,
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField,
+  query, orderBy, limit, where, writeBatch, serverTimestamp, increment,
+  documentId,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 const GMAIL_ENVIAR = 'https://www.googleapis.com/auth/gmail.send';
@@ -1011,4 +1012,172 @@ export async function registrarBaja(db, rbd, datos = {}) {
 export async function cargarBajas(db) {
   const s = await getDocs(query(collection(db, 'bajas'), limit(5000)));
   return new Set(s.docs.map((d) => d.id));
+}
+
+// ---------- envío programado ----------
+/* El token de Gmail que usa la app dura una hora y muere al cerrar la
+   pestaña: perfecto para enviar con alguien delante, inútil para que un
+   correo salga el lunes a las 8. Para eso hace falta un permiso que
+   sobreviva —un refresh token— y ese sólo se consigue con el flujo de
+   código, que exige el secreto del cliente y por lo tanto un servidor.
+   El navegador nunca ve ese secreto: sólo pasea el código de un lado a
+   otro y deja que la función haga el canje. */
+
+/** Abre el consentimiento de Google y deja el permiso guardado en el
+ *  servidor. Devuelve la cuenta que quedó autorizada para enviar. */
+export async function autorizarProgramado(auth, clientId, { leer = true } = {}) {
+  if (!clientId) throw new Error('El envío programado no está configurado en el servidor.');
+  const marca = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  const redirectUri = `${location.origin}/oauth.html`;
+  const alcance = [GMAIL_ENVIAR, ...(leer ? [GMAIL_LEER] : [])].join(' ');
+
+  /* access_type=offline es lo que pide el permiso duradero, y
+     prompt=consent lo que obliga a Google a entregarlo de nuevo: sin
+     él, una segunda autorización devuelve un código que no sirve para
+     renovar nada y el fallo aparecería recién el lunes. */
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: alcance,
+    access_type: 'offline',
+    prompt: 'consent',
+    state: marca,
+  })}`;
+
+  const ventana = window.open(url, 'jm_oauth', 'width=520,height=660,menubar=no');
+  if (!ventana) throw new Error('El navegador bloqueó la ventana de Google. Permite las ventanas emergentes de este sitio.');
+
+  const code = await new Promise((resolve, rechazar) => {
+    let listo = false;
+    const cerrar = () => {
+      listo = true;
+      window.removeEventListener('message', alMensaje);
+      clearInterval(vigia);
+      clearTimeout(plazo);
+    };
+    const alMensaje = (ev) => {
+      // Sólo se acepta lo que viene del propio origen y con la marca de
+      // esta petición: un mensaje de cualquier otra pestaña se ignora.
+      if (ev.origin !== location.origin) return;
+      if (ev.data?.fuente !== 'jm-oauth' || ev.data.state !== marca) return;
+      cerrar();
+      if (ev.data.error) rechazar(new Error(`Google no concedió el permiso (${ev.data.error}).`));
+      else if (!ev.data.code) rechazar(new Error('Google no devolvió el código de autorización.'));
+      else resolve(ev.data.code);
+    };
+    window.addEventListener('message', alMensaje);
+    const vigia = setInterval(() => {
+      if (listo || !ventana.closed) return;
+      cerrar();
+      rechazar(new Error('Se cerró la ventana antes de conceder el permiso.'));
+    }, 500);
+    const plazo = setTimeout(() => {
+      cerrar();
+      try { ventana.close(); } catch { /* ya cerrada */ }
+      rechazar(new Error('Se acabó el tiempo para autorizar.'));
+    }, 3 * 60 * 1000);
+  });
+
+  const idToken = await auth.currentUser.getIdToken();
+  const r = await fetch('/t/autorizar', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirectUri }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `No se pudo guardar la autorización (HTTP ${r.status}).`);
+  return j;
+}
+
+/** Retira el permiso duradero y libera las campañas que esperaban. */
+export async function desautorizarProgramado(auth) {
+  const idToken = await auth.currentUser.getIdToken();
+  const r = await fetch('/t/desautorizar', {
+    method: 'POST', headers: { Authorization: `Bearer ${idToken}` },
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'No se pudo retirar la autorización.');
+  return j;
+}
+
+/**
+ * Deja una campaña lista para salir sola a la hora indicada.
+ *
+ * Redacta acá los mensajes completos y los guarda ya armados. Podría
+ * armarlos el servidor, pero entonces la plantilla, la firma y el
+ * seguimiento vivirían dos veces y bastaría con que una copia quedara
+ * atrás para que el correo del lunes no fuera el que se aprobó el
+ * sábado. Lo que se programa es exactamente lo que se vio en la vista
+ * previa.
+ */
+export async function programarCampana(db, campana, tanda, ctx, uid, cuando, alAvanzar) {
+  const base = location.origin;
+  const remitente = ctx.remitenteProgramado || gmailCorreo();
+  if (!remitente) throw new Error('No hay una cuenta autorizada para enviar.');
+  const esSeguimiento = Boolean(campana.seguimientoDe);
+  const usaB = Boolean(campana.asuntoB || campana.cuerpoB);
+
+  /* Nace como borrador y recién al final pasa a programada: si algo
+     falla a mitad de la redacción, lo que queda es un borrador
+     incompleto y no una campaña que va a salir a medias. */
+  const id = await guardarCampana(db, { ...campana, estado: 'borrador' }, tanda, uid);
+
+  let lote = writeBatch(db);
+  let enLote = 0;
+  let listos = 0;
+
+  for (const [i, d] of tanda.entries()) {
+    if (!d.email) continue;
+    const variante = usaB && i % 2 === 1 ? 'B' : 'A';
+    const prospecto = ctx.prospectos?.get(String(d.rbd)) || d;
+    const asunto = aplicarVariables(
+      variante === 'B' && campana.asuntoB ? campana.asuntoB : campana.asunto, prospecto, ctx);
+    const texto = aplicarVariables(
+      variante === 'B' && campana.cuerpoB ? campana.cuerpoB : campana.cuerpo, prospecto, ctx);
+    const html = correoHtml({
+      texto, prospecto, ctx, breve: esSeguimiento,
+      base, campanaId: id, rbd: d.rbd, track: campana.track,
+    });
+    const crudo = mensajeCrudo({
+      para: d.email, asunto, html, texto,
+      de: remitente, deNombre: MARCA.remitenteNombre,
+      bajaUrl: ctx.funcion ? urlBaja(base, id, d.rbd) : '',
+    });
+
+    lote.set(doc(db, 'campanas', id, 'destinatarios', String(d.rbd)),
+      { crudo, variante, estado: 'pendiente', error: '' }, { merge: true });
+    listos += 1;
+    enLote += 1;
+    // Lotes cortos a propósito: cada mensaje redactado pesa unos 20 KB y
+    // un lote de 450 excedería el tamaño máximo de una escritura.
+    if (enLote === 25) { await lote.commit(); lote = writeBatch(db); enLote = 0; }
+    alAvanzar?.({ i: i + 1, total: tanda.length });
+  }
+  if (enLote) await lote.commit();
+  if (!listos) throw new Error('Ningún destinatario de la tanda tiene correo.');
+
+  await updateDoc(doc(db, 'campanas', id), {
+    estado: 'programada',
+    programadaPara: cuando,
+    programadaPor: uid,
+    remitenteProgramado: remitente,
+    errorProgramado: '',
+    'totales.destinatarios': listos,
+    actualizado: serverTimestamp(),
+  });
+  return { id, listos };
+}
+
+/** Devuelve una campaña programada al estado de borrador. */
+export async function cancelarProgramacion(db, id) {
+  /* El campo se borra en vez de quedar en nulo: en Firestore un nulo
+     sigue siendo menor que cualquier fecha, así que una campaña
+     cancelada seguiría entrando en la consulta de "ya vencidas". */
+  await updateDoc(doc(db, 'campanas', id), {
+    estado: 'borrador',
+    programadaPara: deleteField(),
+    errorProgramado: '',
+    actualizado: serverTimestamp(),
+  });
 }

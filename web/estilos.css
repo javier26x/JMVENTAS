@@ -787,6 +787,16 @@ th .ayuda { vertical-align: baseline; }
 .env.respondido { color: var(--ok); font-weight: 600; }
 .env.error, .env.rebotado { color: var(--critico); font-weight: 550; }
 .env.baja { color: var(--critico); font-weight: 550; }
+.env.programado { color: var(--acento); font-weight: 600; }
+.env.malo { color: var(--critico); font-weight: 550; }
+
+/* Programar el envío: día, hora y un atajo al lunes temprano. */
+.programar-cuando {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 4px;
+}
+.programar-cuando label { flex: 1 1 130px; margin: 0; }
+.programar-cuando button { flex: 0 0 auto; }
+.sub.malo { color: var(--critico); }
 
 .error-texto { color: var(--critico); }
 
