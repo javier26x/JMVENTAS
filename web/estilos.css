@@ -806,12 +806,63 @@ th .ayuda { vertical-align: baseline; }
 }
 .env.malo { color: var(--critico); font-weight: 550; }
 
+/* Secciones plegadas: el ajuste que se toca una vez no debe ocupar lo
+   mismo que el que se mira siempre. */
+.tarjeta.plegable { padding: 0; }
+.tarjeta.plegable > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; cursor: pointer; list-style: none; border-radius: 10px;
+}
+.tarjeta.plegable > summary::-webkit-details-marker { display: none; }
+.tarjeta.plegable > summary .titulo { font-weight: 600; font-size: 14px; }
+.tarjeta.plegable > summary .titulo::before {
+  content: '▸'; display: inline-block; width: 14px;
+  color: var(--tinta-apagada); transition: transform .15s;
+}
+.tarjeta.plegable[open] > summary .titulo::before { transform: rotate(90deg); }
+.tarjeta.plegable > summary .resumen {
+  font-size: 12px; color: var(--tinta-apagada); text-align: right;
+}
+.tarjeta.plegable > summary:hover { background: var(--suave); }
+.tarjeta.plegable[open] > summary { border-bottom: 1px solid var(--linea); }
+.cuerpo-plegable { padding: 4px 16px 16px; }
+
+/* Cuándo sale: ahora o programado, una decisión y no dos botones. */
+.opciones-cuando { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 12px; }
+.opciones-cuando .opcion {
+  flex: 1 1 190px; display: flex; align-items: flex-start; gap: 9px; margin: 0;
+  padding: 11px 13px; border: 1px solid var(--linea); border-radius: 9px;
+  cursor: pointer; font-weight: 400;
+}
+.opciones-cuando .opcion:has(input:checked) {
+  border-color: var(--acento); background: var(--suave);
+}
+.opciones-cuando .opcion.apagada { opacity: .5; cursor: not-allowed; }
+.opciones-cuando .opcion input { margin-top: 2px; }
+.opciones-cuando .opcion span { display: flex; flex-direction: column; gap: 2px; }
+.opciones-cuando .opcion strong { font-size: 13.5px; }
+.opciones-cuando .opcion em { font-style: normal; font-size: 12px; color: var(--tinta-apagada); }
+.acciones-salida { margin-top: 12px; }
+
+/* Un botón que se lee como enlace, para acciones secundarias en línea. */
+button.enlace {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--titulo);
+  text-decoration: underline; cursor: pointer;
+}
+
 /* Programar el envío: día, hora y un atajo al lunes temprano. */
 .programar-cuando {
   display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 4px;
 }
 .programar-cuando label { flex: 1 1 130px; margin: 0; }
-.programar-cuando button { flex: 0 0 auto; }
+.atajos-cuando {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 9px;
+}
+.atajos-cuando .atajo {
+  padding: 5px 11px; font-size: 12.5px; border-radius: 999px;
+  border: 1px solid var(--linea); background: var(--tarjeta); cursor: pointer;
+}
+.atajos-cuando .atajo:hover { border-color: var(--acento); color: var(--acento); }
 .sub.malo { color: var(--critico); }
 
 .error-texto { color: var(--critico); }

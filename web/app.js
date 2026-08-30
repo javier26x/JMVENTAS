@@ -1577,6 +1577,7 @@ function previsualizar() {
   const ejemplo = estado.destinatarios[0];
   const caja = $('previsualizacion');
   pintarAsuntos();
+  pintarResumenes();
   if (!ejemplo) { caja.textContent = 'Sin destinatarios en el segmento.'; return; }
   const ctx = ctxCorreo();
   const asunto = mail.asuntoDe(ejemplo, ctx).texto;
@@ -2244,63 +2245,69 @@ function pintarProgramar() {
      pulsarlo un sábado los suelta un sábado. Para enviar ya, primero se
      cancela la programación, que es una decisión consciente. */
   const enviarYa = $('c-enviar');
+  const ahora = $('c-cuando-ahora');
+  const luego = $('c-cuando-luego');
   const programada = c.estado === 'programada';
-  enviarYa.disabled = programada;
-  enviarYa.title = programada
-    ? 'La campaña está programada. Cancela la programación para enviarla ahora.'
-    : '';
   const dias = p.autorizacion?.desde
     ? Math.floor((Date.now() - p.autorizacion.desde) / 864e5) : null;
 
   autorizar.classList.toggle('oculto', !p.disponible);
   autorizar.textContent = autorizado ? 'Volver a autorizar' : 'Autorizar envío automático';
 
-  // Una campaña ya programada no se vuelve a programar: se cancela.
-  if (c.estado === 'programada') {
-    boton.dataset.modo = 'cancelar';
-    boton.textContent = 'Cancelar programación';
-    boton.disabled = false;
-    nota.className = 'sub';
+  /* Por qué no se puede programar, dicho una sola vez. Antes cada motivo
+     era una salida temprana distinta y el orden de las comprobaciones
+     decidía el mensaje; así se lee de arriba abajo. */
+  let impedimento = '';
+  if (!estado.funcion) {
+    impedimento = 'Necesita la función desplegada: firebase deploy --only functions';
+  } else if (!p.disponible) {
+    impedimento = 'Falta configurar las credenciales del envío programado en el '
+      + 'servidor. Está explicado en docs/campana.md, sección "Programar el envío".';
+  } else if (!autorizado) {
+    impedimento = 'Falta autorizar una vez para que el correo pueda salir con el '
+      + 'navegador cerrado. Es el mismo permiso de Gmail, pero guardado en el servidor.';
+  } else if (!cuenta) {
+    impedimento = 'La autorización guardada es de una versión anterior y no registró '
+      + 'la cuenta de envío. Pulsa "Volver a autorizar" una vez.';
+  }
+
+  // Una campaña ya programada no admite elección: ya está decidida.
+  if (programada) luego.checked = true;
+  ahora.disabled = programada;
+  luego.disabled = Boolean(impedimento) && !programada;
+  $('opcion-luego').classList.toggle('apagada', luego.disabled);
+  if (luego.disabled && luego.checked) ahora.checked = true;
+
+  const difiere = luego.checked;
+  $('bloque-cuando').classList.toggle('oculto', !difiere || programada);
+  enviarYa.classList.toggle('oculto', difiere);
+  boton.classList.toggle('oculto', !difiere);
+  enviarYa.disabled = programada;
+  boton.dataset.modo = programada ? 'cancelar' : 'programar';
+  boton.textContent = programada ? 'Cancelar programación' : 'Programar';
+  boton.disabled = !programada && Boolean(impedimento);
+
+  nota.className = 'sub';
+  if (programada) {
     nota.textContent = `Sale ${cuandoSale(c.programadaPara)} desde `
       + `${c.remitenteProgramado || quien}. Para cambiar el texto hay que `
       + 'cancelar primero: lo que va a salir ya está redactado.';
     return;
   }
-
-  boton.dataset.modo = 'programar';
-  boton.textContent = 'Programar';
-
-  if (!estado.funcion) {
-    boton.disabled = true;
+  if (!difiere) {
+    // Enviar ahora también tiene su hora, y conviene decirla antes del
+    // clic y no dentro de la ventana de confirmación.
+    const hoy = avisoMomento();
+    nota.textContent = hoy || (impedimento ? `Programar: ${impedimento}` : '');
+    if (hoy) nota.className = 'sub malo';
+    return;
+  }
+  if (impedimento) {
     nota.className = 'sub malo';
-    nota.textContent = 'Necesita la función desplegada: firebase deploy --only functions';
-    return;
-  }
-  if (!p.disponible) {
-    boton.disabled = true;
-    nota.className = 'sub malo';
-    nota.textContent = 'Falta configurar las credenciales del envío programado en el '
-      + 'servidor. Está explicado en docs/campana.md, sección "Programar el envío".';
-    return;
-  }
-  if (!autorizado) {
-    boton.disabled = true;
-    nota.className = 'sub';
-    nota.textContent = 'Falta autorizar una vez para que el correo pueda salir con el '
-      + 'navegador cerrado. Es el mismo permiso de Gmail, pero guardado en el servidor.';
+    nota.textContent = impedimento;
     return;
   }
 
-  if (!cuenta) {
-    boton.disabled = true;
-    nota.className = 'sub malo';
-    nota.textContent = 'La autorización guardada es de una versión anterior y no '
-      + 'registró la cuenta de envío. Pulsa "Volver a autorizar" una vez.';
-    return;
-  }
-
-  boton.disabled = false;
-  nota.className = 'sub';
   /* El aviso se evalúa sobre la hora elegida y no sobre ahora: al
      programar, lo único que importa es cómo se va a leer el correo
      cuando llegue. */
@@ -2319,6 +2326,30 @@ function pintarProgramar() {
       + 'mientras la aplicación no esté verificada): vuelve a autorizar.');
   }
   nota.textContent = avisos.join(' ');
+}
+
+/* Lo que dice cada sección plegada sin abrirla. Una tarjeta cerrada que
+   no cuenta cómo está obliga a abrirla para comprobarlo, y entonces
+   plegarla no sirvió de nada. */
+function pintarResumenes() {
+  const c = estado.campanaActual || {};
+  const plantilla = mail.PLANTILLAS[c.plantilla || 'lamina']?.nombre || '—';
+  $('resumen-disenio').textContent = `${plantilla} · ${c.tema === 'oscuro' ? 'oscuro' : 'claro'}`;
+
+  const wa = $('c-whatsapp').value.trim();
+  const slots = ($('c-horarios').value || '').split('|').filter(Boolean).length;
+  $('resumen-contacto').textContent = [
+    wa ? 'WhatsApp' : 'sin WhatsApp',
+    slots ? `${slots} horario${slots === 1 ? '' : 's'}` : 'sin horarios',
+  ].join(' · ');
+
+  $('resumen-seguimiento').textContent = [
+    $('c-track-aperturas').checked ? 'aperturas' : 'sin aperturas',
+    $('c-evidencia').checked ? 'evidencia' : 'sin evidencia',
+  ].join(' · ');
+
+  $('resumen-ab').textContent = $('c-cuerpo-b').value.trim()
+    ? 'con variante B' : 'sin variante';
 }
 
 async function autorizarProgramado() {
@@ -2433,7 +2464,7 @@ function atajoDia(diaSemana) {
 }
 $('c-lunes').addEventListener('click', () => atajoDia(1));
 $('c-martes').addEventListener('click', () => atajoDia(2));
-for (const id of ['c-fecha', 'c-hora']) {
+for (const id of ['c-fecha', 'c-hora', 'c-cuando-ahora', 'c-cuando-luego']) {
   $(id).addEventListener('change', pintarProgramar);
 }
 $('c-programar').addEventListener('click', () => (
@@ -2480,6 +2511,11 @@ $('c-ver-grande').addEventListener('click', () => {
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 });
+
+for (const id of ['c-track-aperturas', 'c-evidencia']) {
+  $(id).addEventListener('change', pintarResumenes);
+}
+$('c-cuerpo-b').addEventListener('input', pintarResumenes);
 
 for (const [id, fn] of [
   ['c-cuerpo', previsualizar],

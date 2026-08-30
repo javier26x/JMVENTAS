@@ -301,116 +301,150 @@
           </div>
 
           <div class="tarjeta">
-            <h3>Diseño del correo
-              <button type="button" class="ayuda" data-ayuda="c-plantilla" aria-label="Qué significa">?</button></h3>
-            <p class="sub">Cinco piezas con el mismo contenido y distinta forma.
-              Elige el modo y la plantilla; la vista previa se actualiza sola.</p>
-            <div class="modos" id="c-tema"></div>
-            <div class="plantillas" id="c-plantilla"></div>
-          </div>
-
-          <div class="tarjeta">
-            <h3>Prueba A/B del mensaje <span class="sub">opcional</span> <button type="button" class="ayuda" data-ayuda="c-asunto-b" aria-label="Qué significa">?</button></h3>
-            <p class="sub">Si completas una variante, la mitad del segmento la recibe
-              (uno sí, uno no). Compara los resultados en el detalle de la campaña.
-              El asunto ya se prueba solo, en seis versiones.</p>
-            <label>Mensaje B
-              <textarea id="c-cuerpo-b" rows="5"
-                        placeholder="Déjalo vacío para probar sólo el asunto."></textarea>
-            </label>
-          </div>
-
-          <div class="tarjeta">
-            <h3>Contacto en el correo</h3>
-            <p class="sub">Aparecen como botón y en la firma. El WhatsApp llega
-              con el nombre del colegio ya escrito en el mensaje.</p>
-            <label>WhatsApp <button type="button" class="ayuda" data-ayuda="c-whatsapp" aria-label="Qué significa">?</button>
-              <input type="text" id="c-whatsapp" placeholder="+56 9 1234 5678" autocomplete="off">
-            </label>
-            <label>Sitio web (opcional)
-              <input type="text" id="c-sitio" placeholder="https://jumpmath.cl" autocomplete="off">
-            </label>
-            <div class="campo-agenda">
-              <span class="etq-agenda">Horarios propuestos</span> <button type="button" class="ayuda" data-ayuda="c-horarios" aria-label="Qué significa">?</button>
-              <p class="sub">Marca varios días y varias horas: se cruzan.
-                Proponer fechas concretas responde mucho mejor que “cuando
-                usted pueda”.</p>
-              <div class="agenda">
-                <div class="agenda-cab">
-                  <button class="fantasma" id="ag-antes" title="Días anteriores">‹</button>
-                  <strong id="ag-mes"></strong>
-                  <button class="fantasma" id="ag-despues" title="Días siguientes">›</button>
-                </div>
-                <div id="ag-dias" class="ag-dias"></div>
-                <div id="ag-horas" class="ag-horas"></div>
-              </div>
-              <div id="ag-elegidos" class="ag-elegidos"></div>
-              <input type="hidden" id="c-horarios">
-            </div>
-          </div>
-
-          <div class="tarjeta">
             <h3>Vista previa</h3>
-            <p class="sub">Con los datos de un destinatario real.</p>
-            <div class="fila-botones" style="margin-bottom:10px">
-              <button id="c-ver-grande">Abrir en pestaña completa</button>
-            </div>
+            <p class="sub">Con los datos de un destinatario real.
+              <button id="c-ver-grande" class="enlace">Abrir en pestaña completa</button></p>
             <div id="previsualizacion" class="previsualizacion"></div>
           </div>
 
-          <div class="tarjeta">
-            <h3>Seguimiento</h3>
-            <label class="check">
-              <input type="checkbox" id="c-track-aperturas">
-              Registrar aperturas y clics <button type="button" class="ayuda" data-ayuda="c-track-aperturas" aria-label="Qué significa">?</button>
-            </label>
-            <p class="sub" id="track-aviso">
-              Requiere desplegar la función de seguimiento y el plan Blaze.
-              Sin ella se registran envíos, errores y respuestas.
-            </p>
-            <label class="check">
-              <input type="checkbox" id="c-evidencia">
-              Enlazar la página de evidencia <button type="button" class="ayuda" data-ayuda="c-evidencia" aria-label="Qué significa">?</button>
-            </label>
-            <p class="sub">
-              Añade “Ver la evidencia en 2 minutos” bajo el texto.
-              <a href="/evidencia.html" target="_blank" rel="noopener">Revísala antes de activarla</a>:
-              prometer pruebas y llevar a una página incompleta cuesta más que no prometer nada.
-            </p>
-          </div>
+          <!-- Los ajustes que se tocan una vez y se dejan quietos van
+               plegados: abiertos ocupaban media pantalla cada uno y
+               empujaban los botones de envío fuera de la vista. El
+               resumen de cada uno dice cómo está sin abrirlo. -->
+          <details class="tarjeta plegable">
+            <summary>
+              <span class="titulo">Diseño del correo</span>
+              <span class="resumen" id="resumen-disenio">—</span>
+            </summary>
+            <div class="cuerpo-plegable">
+              <p class="sub">Cinco piezas con el mismo contenido y distinta forma.
+                Elige el modo y la plantilla; la vista previa se actualiza sola.
+                <button type="button" class="ayuda" data-ayuda="c-plantilla" aria-label="Qué significa">?</button></p>
+              <div class="modos" id="c-tema"></div>
+              <div class="plantillas" id="c-plantilla"></div>
+            </div>
+          </details>
 
-          <div class="tarjeta" id="tarjeta-programar">
-            <h3>Programar el envío <span class="sub">opcional</span>
+          <details class="tarjeta plegable">
+            <summary>
+              <span class="titulo">Contacto y horarios</span>
+              <span class="resumen" id="resumen-contacto">—</span>
+            </summary>
+            <div class="cuerpo-plegable">
+              <p class="sub">Aparecen como botón y en la firma. El WhatsApp llega
+                con el nombre del colegio ya escrito en el mensaje.</p>
+              <label>WhatsApp <button type="button" class="ayuda" data-ayuda="c-whatsapp" aria-label="Qué significa">?</button>
+                <input type="text" id="c-whatsapp" placeholder="+56 9 1234 5678" autocomplete="off">
+              </label>
+              <label>Sitio web (opcional)
+                <input type="text" id="c-sitio" placeholder="https://jumpmath.cl" autocomplete="off">
+              </label>
+              <div class="campo-agenda">
+                <span class="etq-agenda">Horarios propuestos</span> <button type="button" class="ayuda" data-ayuda="c-horarios" aria-label="Qué significa">?</button>
+                <p class="sub">Marca varios días y varias horas: se cruzan.
+                  Proponer fechas concretas responde mucho mejor que “cuando
+                  usted pueda”.</p>
+                <div class="agenda">
+                  <div class="agenda-cab">
+                    <button class="fantasma" id="ag-antes" title="Días anteriores">‹</button>
+                    <strong id="ag-mes"></strong>
+                    <button class="fantasma" id="ag-despues" title="Días siguientes">›</button>
+                  </div>
+                  <div id="ag-dias" class="ag-dias"></div>
+                  <div id="ag-horas" class="ag-horas"></div>
+                </div>
+                <div id="ag-elegidos" class="ag-elegidos"></div>
+                <input type="hidden" id="c-horarios">
+              </div>
+            </div>
+          </details>
+
+          <details class="tarjeta plegable">
+            <summary>
+              <span class="titulo">Seguimiento y evidencia</span>
+              <span class="resumen" id="resumen-seguimiento">—</span>
+            </summary>
+            <div class="cuerpo-plegable">
+              <label class="check">
+                <input type="checkbox" id="c-track-aperturas">
+                Registrar aperturas y clics <button type="button" class="ayuda" data-ayuda="c-track-aperturas" aria-label="Qué significa">?</button>
+              </label>
+              <p class="sub" id="track-aviso">
+                Requiere desplegar la función de seguimiento y el plan Blaze.
+                Sin ella se registran envíos, errores y respuestas.
+              </p>
+              <label class="check">
+                <input type="checkbox" id="c-evidencia">
+                Enlazar la página de evidencia <button type="button" class="ayuda" data-ayuda="c-evidencia" aria-label="Qué significa">?</button>
+              </label>
+              <p class="sub">
+                Añade “Ver la evidencia en 2 minutos” bajo el texto.
+                <a href="/evidencia.html" target="_blank" rel="noopener">Revísala antes de activarla</a>:
+                prometer pruebas y llevar a una página incompleta cuesta más que no prometer nada.
+              </p>
+            </div>
+          </details>
+
+          <details class="tarjeta plegable">
+            <summary>
+              <span class="titulo">Prueba A/B del mensaje</span>
+              <span class="resumen" id="resumen-ab">sin variante</span>
+            </summary>
+            <div class="cuerpo-plegable">
+              <p class="sub">Si completas una variante, la mitad del segmento la recibe
+                (uno sí, uno no). Compara los resultados en el detalle de la campaña.
+                El asunto ya se prueba solo, en seis versiones.
+                <button type="button" class="ayuda" data-ayuda="c-asunto-b" aria-label="Qué significa">?</button></p>
+              <label>Mensaje B
+                <textarea id="c-cuerpo-b" rows="5"
+                          placeholder="Déjalo vacío para probar sólo el asunto."></textarea>
+              </label>
+            </div>
+          </details>
+
+          <!-- Cuándo sale y el botón que lo hace, juntos. Separados, uno
+               podía programar para el lunes y pulsar "enviar" un sábado
+               sin que nada lo desmintiera. -->
+          <div class="tarjeta salida" id="tarjeta-programar">
+            <h3>Cuándo sale
               <button type="button" class="ayuda" data-ayuda="c-programar" aria-label="Qué significa">?</button></h3>
-            <p class="sub">Deja la tanda redactada y que salga sola a la hora que
-              elijas, con el navegador cerrado. Lo que se envía es exactamente
-              esta vista previa.</p>
-            <div class="programar-cuando">
-              <label>Día
-                <input type="date" id="c-fecha">
+            <div class="opciones-cuando">
+              <label class="opcion">
+                <input type="radio" name="cuando" id="c-cuando-ahora" checked>
+                <span><strong>Ahora</strong><em>Se envía uno por uno, con la pestaña abierta.</em></span>
               </label>
-              <label>Hora
-                <input type="time" id="c-hora" step="900">
+              <label class="opcion" id="opcion-luego">
+                <input type="radio" name="cuando" id="c-cuando-luego">
+                <span><strong>Programado</strong><em>Sale solo, con el navegador cerrado.</em></span>
               </label>
-              <button type="button" id="c-lunes" class="fantasma">Lunes 8:00</button>
-              <button type="button" id="c-martes" class="fantasma">Martes 8:00</button>
+            </div>
+
+            <div id="bloque-cuando" class="oculto">
+              <div class="programar-cuando">
+                <label>Día
+                  <input type="date" id="c-fecha">
+                </label>
+                <label>Hora
+                  <input type="time" id="c-hora" step="900">
+                </label>
+              </div>
+              <div class="atajos-cuando">
+                <span class="sub">Atajos:</span>
+                <button type="button" id="c-lunes" class="atajo">Lunes 8:00</button>
+                <button type="button" id="c-martes" class="atajo">Martes 8:00</button>
+              </div>
             </div>
             <p class="sub" id="programar-nota"></p>
-            <div class="fila-botones">
-              <button id="c-programar">Programar</button>
-              <button type="button" class="ayuda" data-ayuda="c-programar-boton" aria-label="Qué significa">?</button>
-              <button id="c-autorizar" class="fantasma oculto">Autorizar envío automático</button>
-            </div>
-          </div>
 
-          <div class="fila-botones">
-            <button id="c-prueba">Enviarme una prueba</button>
-            <button type="button" class="ayuda" data-ayuda="c-prueba" aria-label="Qué significa">?</button>
-            <button id="c-guardar">Guardar borrador</button>
-            <button type="button" class="ayuda" data-ayuda="c-guardar" aria-label="Qué significa">?</button>
-            <button class="primario" id="c-enviar">Enviar campaña</button>
-            <button type="button" class="ayuda" data-ayuda="c-enviar" aria-label="Qué significa">?</button>
-            <button class="fantasma" id="c-volver">Volver</button>
+            <div class="fila-botones acciones-salida">
+              <button class="primario" id="c-enviar">Enviar campaña</button>
+              <button class="primario oculto" id="c-programar">Programar</button>
+              <button id="c-prueba">Enviarme una prueba</button>
+              <button type="button" class="ayuda" data-ayuda="c-prueba" aria-label="Qué significa">?</button>
+              <button id="c-guardar">Guardar borrador</button>
+              <button id="c-autorizar" class="fantasma oculto">Autorizar envío automático</button>
+              <button class="fantasma" id="c-volver">Volver</button>
+            </div>
           </div>
           <div id="c-progreso" class="progreso oculto"></div>
         </div>
