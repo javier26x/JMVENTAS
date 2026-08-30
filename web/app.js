@@ -1802,14 +1802,21 @@ async function enviar() {
   estado.cancelar = false;
   $('c-enviar').disabled = true;
   const prospectos = new Map(estado.destinatarios.map((p) => [String(p.rbd), p]));
+  /* Sólo los que de verdad salieron: marcar la tanda completa pondría
+     ultimoContacto a quien dio error o quedó sin intentar por un corte,
+     y la guardia de 30 días lo escondería de la próxima campaña sin que
+     nadie le haya escrito nunca. */
+  const exitosos = new Set();
   try {
     const r = await mail.enviarCampana(db, c, tanda,
       ctxCorreo({ prospectos, cancelado: () => estado.cancelar }),
-      ({ i, total, d, error }) => progreso(
-        `${i}/${total} · ${d.establecimiento || d.rbd}${error ? ` — ERROR: ${error}` : ''}`));
+      ({ i, total, d, error }) => {
+        if (!error) exitosos.add(String(d.rbd));
+        progreso(`${i}/${total} · ${d.establecimiento || d.rbd}${error ? ` — ERROR: ${error}` : ''}`);
+      });
     progreso(`Listo: ${r.enviados} enviados, ${r.errores} con error.`);
     avisar(`${r.enviados} correos enviados. En 48 horas, pulsa "Revisar respuestas".`);
-    await marcarContactados(tanda, c);
+    await marcarContactados(tanda.filter((d) => exitosos.has(String(d.rbd))), c);
     await pintarCampanas();
     await abrirDetalle(c.id);
   } catch (e) {

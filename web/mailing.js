@@ -904,8 +904,12 @@ export async function enviarPrueba(campana, prospecto, ctx) {
  * que no es nuestro, es una respuesta.
  */
 export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
+  /* Los ya resueltos quedan fuera: un rebote o una baja que se vuelve a
+     mirar se volvería a contar, y cada pasada inflaría los totales de la
+     campaña con el mismo hilo de siempre. */
+  const resueltos = ['respondido', 'rebotado', 'baja'];
   const dest = (await listarDestinatarios(db, campanaId))
-    .filter((d) => d.threadId && d.estado !== 'respondido');
+    .filter((d) => d.threadId && !resueltos.includes(d.estado));
   let respuestas = 0;
   let rebotes = 0;
   let bajas = 0;
