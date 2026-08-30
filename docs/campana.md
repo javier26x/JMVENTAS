@@ -102,11 +102,17 @@ La app avisa cuando el momento del envío cae en una franja mala.
 
 ### Programar el envío
 
-En el editor de campaña, la tarjeta **Programar el envío** deja la tanda
-redactada y guardada para que salga sola a la hora elegida, con el navegador
-cerrado. Los correos se escriben en el momento de programar, así que lo que
-llega es exactamente la vista previa; para cambiar el texto hay que cancelar la
-programación y volver a programar.
+En el editor de campaña, la tarjeta **Cuándo sale** ofrece dos caminos: *Ahora*
+(uno por uno, con la pestaña abierta) o *Programado* (sale solo, con el
+navegador cerrado). Los correos se escriben en el momento de programar, así que
+lo que llega es exactamente la vista previa.
+
+Una campaña programada **se puede editar mientras no haya salido**: cambia el
+texto, el diseño, el día o la hora y pulsa **Actualizar programación**. Eso
+vuelve a redactar los correos que todavía están pendientes —los que ya salieron
+no se tocan— y la deja programada otra vez. Si el reloj la está despachando en
+ese momento, avisa y no la toca. Mientras haya cambios sin aplicar, la tarjeta lo
+dice en rojo: *"Cambiaste el mensaje: pulsa Actualizar programación"*.
 
 El aviso de momento se evalúa sobre la **hora elegida**, no sobre ahora: si se
 programa un lunes a las 8, la app lo dice antes de aceptar.

@@ -1332,6 +1332,88 @@ export async function programarCampana(db, campana, tanda, ctx, uid, cuando, alA
   return { id, listos };
 }
 
+/**
+ * Vuelve a redactar una campaña ya programada, con el texto y el diseño
+ * de ahora, y la deja programada otra vez.
+ *
+ * Lo que hace falta reescribir es el `crudo` de cada destinatario: es el
+ * mensaje entero, y editar el cuerpo en pantalla sin rehacerlo dejaría
+ * la campaña saliendo con el texto viejo mientras la vista previa
+ * muestra el nuevo. Sólo se tocan los que siguen pendientes, para no
+ * resucitar a quien ya recibió el correo.
+ */
+export async function reprogramarCampana(db, campana, ctx, uid, cuando, alAvanzar) {
+  const base = location.origin;
+  const remitente = ctx.remitenteProgramado || campana.remitenteProgramado || gmailCorreo();
+  if (!remitente) throw new Error('No hay una cuenta autorizada para enviar.');
+
+  /* Si el reloj la reclamó hace menos de diez minutos puede estar
+     despachándola ahora mismo. Reescribir por debajo sería cambiarle el
+     mensaje a mitad de camino. */
+  const actual = await getDoc(doc(db, 'campanas', campana.id));
+  const desde = actual.get('enviandoDesde')?.toMillis?.() || 0;
+  if (Date.now() - desde < 10 * 60 * 1000) {
+    throw new Error('La campaña se está enviando en este momento. Espera unos '
+      + 'minutos y vuelve a intentarlo.');
+  }
+
+  /* Fuera de la cola mientras se rehace: si el reloj la tomara a mitad
+     de la reescritura, saldría una mezcla de mensajes viejos y nuevos. */
+  await updateDoc(doc(db, 'campanas', campana.id), {
+    estado: 'borrador', programadaPara: deleteField(),
+  });
+
+  const pendientes = await listarDestinatarios(db, campana.id, true);
+  const esSeguimiento = Boolean(campana.seguimientoDe);
+  const usaB = Boolean(campana.cuerpoB);
+  let lote = writeBatch(db);
+  let enLote = 0;
+  let listos = 0;
+
+  for (const [i, d] of pendientes.entries()) {
+    if (!d.email) continue;
+    const variante = usaB && i % 2 === 1 ? 'B' : 'A';
+    const prospecto = ctx.prospectos?.get(String(d.rbd)) || d;
+    const { texto: asunto, variante: asuntoVariante } = asuntoDe(prospecto, ctx);
+    const texto = aplicarVariables(
+      variante === 'B' && campana.cuerpoB ? campana.cuerpoB : campana.cuerpo, prospecto, ctx);
+    const html = correoHtml({
+      texto, prospecto, ctx, breve: esSeguimiento,
+      base, campanaId: campana.id, rbd: d.rbd, track: campana.track,
+    });
+    lote.set(doc(db, 'campanas', campana.id, 'destinatarios', String(d.rbd)), {
+      crudo: mensajeCrudo({
+        para: d.email, asunto, html, texto,
+        de: remitente, deNombre: MARCA.remitenteNombre,
+        bajaUrl: ctx.funcion ? urlBaja(base, campana.id, d.rbd) : '',
+      }),
+      variante, asunto, asuntoVariante, estado: 'pendiente', error: '',
+    }, { merge: true });
+    listos += 1;
+    enLote += 1;
+    if (enLote === 25) { await lote.commit(); lote = writeBatch(db); enLote = 0; }
+    alAvanzar?.({ i: i + 1, total: pendientes.length });
+  }
+  if (enLote) await lote.commit();
+  if (!listos) throw new Error('Ya no queda ningún destinatario pendiente.');
+
+  await updateDoc(doc(db, 'campanas', campana.id), {
+    nombre: campana.nombre || 'Sin nombre',
+    cuerpo: campana.cuerpo || '',
+    cuerpoB: campana.cuerpoB || '',
+    evidencia: Boolean(campana.evidencia),
+    plantilla: campana.plantilla || 'lamina',
+    tema: campana.tema || 'claro',
+    track: Boolean(campana.track),
+    estado: 'programada',
+    programadaPara: cuando,
+    remitenteProgramado: remitente,
+    errorProgramado: '',
+    actualizado: serverTimestamp(),
+  });
+  return { id: campana.id, listos };
+}
+
 /** Devuelve una campaña programada al estado de borrador. */
 export async function cancelarProgramacion(db, id) {
   /* El campo se borra en vez de quedar en nulo: en Firestore un nulo

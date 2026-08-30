@@ -2432,21 +2432,34 @@ function pintarProgramar() {
   if (luego.disabled && luego.checked) ahora.checked = true;
 
   const difiere = luego.checked;
-  $('bloque-cuando').classList.toggle('oculto', !difiere || programada);
+  /* Una campaña programada sigue siendo editable: el día, la hora y el
+     texto. Lo que no puede quedar a medias es el mensaje ya redactado,
+     así que al actualizar se vuelve a redactar entero. */
+  $('bloque-cuando').classList.toggle('oculto', !difiere);
   enviarYa.classList.toggle('oculto', difiere);
   boton.classList.toggle('oculto', !difiere);
+  $('c-cancelar-prog').classList.toggle('oculto', !programada);
   enviarYa.disabled = programada;
-  boton.dataset.modo = programada ? 'cancelar' : 'programar';
-  boton.textContent = programada ? 'Cancelar programación' : 'Programar';
+  boton.dataset.modo = programada ? 'actualizar' : 'programar';
+  boton.textContent = programada ? 'Actualizar programación' : 'Programar';
   boton.disabled = !programada && Boolean(impedimento);
 
   nota.className = 'sub';
   if (programada) {
-    nota.textContent = `Sale ${cuandoSale(c.programadaPara)} desde `
-      + `${c.remitenteProgramado || quien}. Para cambiar el texto hay que `
-      + 'cancelar primero: lo que va a salir ya está redactado.';
+    // La fecha guardada, salvo que la esté cambiando ahora mismo.
+    if (!c.__tocada) ponerCuando(c.programadaPara?.toDate?.() || c.programadaPara);
+    const momentoP = avisoMomento(leerCuando());
+    nota.textContent = [
+      momentoP,
+      `Sale ${cuandoSale(leerCuando())} desde ${c.remitenteProgramado || quien}.`,
+      c.__sucia
+        ? 'Cambiaste el mensaje: pulsa “Actualizar programación” para que salga lo nuevo.'
+        : 'Puedes cambiar el texto, el día o la hora y pulsar “Actualizar programación”.',
+    ].filter(Boolean).join(' ');
+    if (momentoP || c.__sucia) nota.className = 'sub malo';
     return;
   }
+  $('c-cancelar-prog').classList.add('oculto');
   if (!difiere) {
     // Enviar ahora también tiene su hora, y conviene decirla antes del
     // clic y no dentro de la ventana de confirmación.
@@ -2566,7 +2579,12 @@ async function programar() {
   const restantes = estado.destinatarios.length - tanda.length;
 
   const momento = avisoMomento(cuando);
-  if (!confirm(`Se programarán ${tanda.length} correos para el `
+  if (c.estado === 'programada') {
+    if (!confirm(`Se volverán a redactar los correos que faltan por salir, con el `
+      + `texto y el diseño de ahora, para el ${cuandoSale(cuando)}.\n`
+      + (momento ? `\n⚠ ${momento}\n` : '')
+      + '\nLos que ya salieron no se tocan. ¿Continuar?')) return;
+  } else if (!confirm(`Se programarán ${tanda.length} correos para el `
     + `${cuandoSale(cuando)}, desde ${cuenta}.\n`
     + (restantes ? `Quedan ${restantes} para tandas posteriores.\n` : '')
     + (momento ? `\n⚠ ${momento}\n` : '')
@@ -2583,16 +2601,21 @@ async function programar() {
   $('c-programar').disabled = true;
   try {
     const prospectos = new Map(estado.destinatarios.map((p) => [String(p.rbd), p]));
-    const r = await mail.programarCampana(db, c, tanda,
-      ctxCorreo({ prospectos, remitente: cuenta, remitenteProgramado: cuenta }),
-      auth.currentUser.uid, cuando,
-      ({ i, total }) => progreso(`Redactando ${i}/${total}…`));
+    const ctx = ctxCorreo({ prospectos, remitente: cuenta, remitenteProgramado: cuenta });
+    const avanzar = ({ i, total }) => progreso(`Redactando ${i}/${total}…`);
+    /* Actualizar rehace el mensaje de los que siguen pendientes; no
+       vuelve a tocar el segmento ni a los que ya recibieron. */
+    const r = c.estado === 'programada'
+      ? await mail.reprogramarCampana(db, c, ctx, auth.currentUser.uid, cuando, avanzar)
+      : await mail.programarCampana(db, c, tanda, ctx, auth.currentUser.uid, cuando, avanzar);
     c.id = r.id;
     c.estado = 'programada';
     c.programadaPara = cuando;
     c.remitenteProgramado = cuenta;
     progreso(`${r.listos} correos listos y programados.`);
     avisar(`Programado: ${r.listos} correos saldrán el ${cuandoSale(cuando)}.`);
+    delete c.__sucia;
+    delete c.__tocada;
     pintarProgramar();
     await pintarCampanas();
   } catch (e) {
@@ -2631,8 +2654,8 @@ $('c-martes').addEventListener('click', () => atajoDia(2));
 for (const id of ['c-fecha', 'c-hora', 'c-cuando-ahora', 'c-cuando-luego']) {
   $(id).addEventListener('change', pintarProgramar);
 }
-$('c-programar').addEventListener('click', () => (
-  $('c-programar').dataset.modo === 'cancelar' ? cancelarProgramacion() : programar()));
+$('c-programar').addEventListener('click', programar);
+$('c-cancelar-prog').addEventListener('click', cancelarProgramacion);
 
 function pintarEstadoGmail(correo, conLectura) {
   const caja = $('gmail-estado');
@@ -2680,6 +2703,26 @@ for (const id of ['c-track-aperturas', 'c-evidencia']) {
   $(id).addEventListener('change', pintarResumenes);
 }
 $('c-cuerpo-b').addEventListener('input', pintarResumenes);
+
+/* Cualquier cambio en el contenido de una campaña ya programada deja el
+   mensaje redactado desfasado, y hay que decirlo en el momento: sin esto
+   uno edita, se va, y el lunes sale el texto viejo. */
+function marcarSucia() {
+  if (estado.campanaActual?.estado === 'programada') {
+    estado.campanaActual.__sucia = true;
+    pintarProgramar();
+  }
+}
+for (const id of ['c-cuerpo', 'c-cuerpo-b', 'c-whatsapp', 'c-sitio',
+  'c-horarios', 'c-track-aperturas', 'c-evidencia']) {
+  $(id).addEventListener('input', marcarSucia);
+  $(id).addEventListener('change', marcarSucia);
+}
+for (const id of ['c-fecha', 'c-hora']) {
+  $(id).addEventListener('input', () => {
+    if (estado.campanaActual) estado.campanaActual.__tocada = true;
+  });
+}
 
 for (const [id, fn] of [
   ['c-cuerpo', previsualizar],
@@ -2767,8 +2810,9 @@ $('c-recalcular').addEventListener('click', () => {
    impedía. */
 function bloqueadaPorProgramada() {
   if (estado.campanaActual?.estado !== 'programada') return false;
-  mostrarError({ message: 'La campaña está programada y sus correos ya están '
-    + 'redactados. Cancela la programación antes de cambiarla.' });
+  mostrarError({ message: 'La campaña está programada. Edita lo que quieras y '
+    + 'pulsa “Actualizar programación”: así se vuelven a redactar los correos '
+    + 'que faltan por salir.' });
   return true;
 }
 
@@ -2794,7 +2838,6 @@ $('c-guardar').addEventListener('click', async () => {
    va a llegar: en su cliente, con las variables resueltas y el remitente
    puesto. La vista previa del editor no muestra cómo lo trata Gmail. */
 $('c-prueba').addEventListener('click', async () => {
-  if (bloqueadaPorProgramada()) return;
   if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail primero.' }); return; }
   const ejemplo = estado.destinatarios[0];
   if (!ejemplo) { mostrarError({ message: 'El segmento no tiene destinatarios.' }); return; }
