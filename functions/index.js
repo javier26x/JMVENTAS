@@ -233,7 +233,23 @@ function destinoValido(destino, req) {
   return HOSTS_APP.has(url.host) || url.host === propio;
 }
 
-async function guardarAutorizacion(code, redirectUri, uid, correo) {
+/* La dirección de quien autorizó, sacada del id_token que viene en el
+   mismo canje. No se verifica la firma y no hace falta: el token llegó
+   por TLS desde el endpoint de Google, como respuesta a una petición
+   nuestra autenticada con el secreto del cliente. */
+function correoDelIdToken(idToken) {
+  try {
+    const carga = String(idToken || '').split('.')[1];
+    if (!carga) return '';
+    const json = Buffer.from(carga.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+      .toString('utf8');
+    return String(JSON.parse(json).email || '');
+  } catch {
+    return '';
+  }
+}
+
+async function guardarAutorizacion(code, redirectUri, uid) {
   /* Google exige que el canje repita el mismo redirect_uri con el que se
      pidió el consentimiento, así que viene del navegador; pero se acepta
      sólo si apunta a este mismo sitio, para que nadie pueda usar este
@@ -245,9 +261,10 @@ async function guardarAutorizacion(code, redirectUri, uid, correo) {
     throw new Error('Google no entregó un permiso duradero. Vuelve a conectar '
       + 'eligiendo la cuenta y aceptando de nuevo la pantalla de permisos.');
   }
+  const correo = correoDelIdToken(t.id_token);
   await db.doc('secretos/gmail').set({
     refreshToken: t.refresh_token,
-    correo: correo || '',
+    correo,
     autorizadoPor: uid,
     autorizadoEn: FieldValue.serverTimestamp(),
     permisos: String(t.scope || ''),
@@ -512,7 +529,7 @@ exports.seguimiento = onRequest({
           res.status(400).json({ error: 'destino de autorización no válido' });
           return;
         }
-        const r = await guardarAutorizacion(code, destino, usuario.uid, req.body?.correo);
+        const r = await guardarAutorizacion(code, destino, usuario.uid);
         res.json({ ok: true, ...r });
       } catch (e) {
         console.error('autorizar', e);

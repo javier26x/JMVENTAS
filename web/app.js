@@ -2222,12 +2222,18 @@ function pintarProgramar() {
   const c = estado.campanaActual || {};
   if (!leerCuando()) ponerCuando(proximoHabil());
 
+  /* Autorizado y "sabemos con qué cuenta" son cosas distintas. Atarlas
+     costó caro una vez: el permiso quedaba bien guardado, la dirección
+     no llegaba, y la pantalla insistía en que faltaba autorizar mientras
+     el botón seguía muerto. */
+  const autorizado = Boolean(p.autorizacion);
   const cuenta = p.autorizacion?.correo || '';
+  const quien = cuenta || 'la cuenta autorizada';
   const dias = p.autorizacion?.desde
     ? Math.floor((Date.now() - p.autorizacion.desde) / 864e5) : null;
 
   autorizar.classList.toggle('oculto', !p.disponible);
-  autorizar.textContent = cuenta ? 'Volver a autorizar' : 'Autorizar envío automático';
+  autorizar.textContent = autorizado ? 'Volver a autorizar' : 'Autorizar envío automático';
 
   // Una campaña ya programada no se vuelve a programar: se cancela.
   if (c.estado === 'programada') {
@@ -2236,7 +2242,7 @@ function pintarProgramar() {
     boton.disabled = false;
     nota.className = 'sub';
     nota.textContent = `Sale ${cuandoSale(c.programadaPara)} desde `
-      + `${c.remitenteProgramado || cuenta}. Para cambiar el texto hay que `
+      + `${c.remitenteProgramado || quien}. Para cambiar el texto hay que `
       + 'cancelar primero: lo que va a salir ya está redactado.';
     return;
   }
@@ -2257,11 +2263,19 @@ function pintarProgramar() {
       + 'servidor. Está explicado en docs/campana.md, sección "Programar el envío".';
     return;
   }
-  if (!cuenta) {
+  if (!autorizado) {
     boton.disabled = true;
     nota.className = 'sub';
     nota.textContent = 'Falta autorizar una vez para que el correo pueda salir con el '
       + 'navegador cerrado. Es el mismo permiso de Gmail, pero guardado en el servidor.';
+    return;
+  }
+
+  if (!cuenta) {
+    boton.disabled = true;
+    nota.className = 'sub malo';
+    nota.textContent = 'La autorización guardada es de una versión anterior y no '
+      + 'registró la cuenta de envío. Pulsa "Volver a autorizar" una vez.';
     return;
   }
 
@@ -2271,12 +2285,12 @@ function pintarProgramar() {
      programar, lo único que importa es cómo se va a leer el correo
      cuando llegue. */
   const momento = avisoMomento(leerCuando());
-  const avisos = [momento, `Saldrá desde ${cuenta}.`].filter(Boolean);
+  const avisos = [momento, `Saldrá desde ${quien}.`].filter(Boolean);
   if (momento) nota.className = 'sub malo';
   /* El remitente del correo programado es la cuenta autorizada, no la
      conectada ahora: si no coinciden, el que firma no es el que se ve
      arriba en la pantalla y conviene decirlo antes y no después. */
-  if (mail.gmailCorreo() && cuenta !== mail.gmailCorreo()) {
+  if (cuenta && mail.gmailCorreo() && cuenta !== mail.gmailCorreo()) {
     avisos.push(`Ojo: ahora estás conectado como ${mail.gmailCorreo()}, `
       + 'pero el envío programado usa la cuenta autorizada.');
   }
@@ -2302,6 +2316,18 @@ async function autorizarProgramado() {
 async function programar() {
   const c = estado.campanaActual;
   const cuenta = estado.programado?.autorizacion?.correo || '';
+  if (!estado.programado?.autorizacion) {
+    mostrarError({ message: 'Primero autoriza el envío automático.' });
+    return;
+  }
+  /* Una autorización anterior a que se pidiera el permiso de identidad
+     quedó sin dirección, y el remitente no se puede adivinar: el correo
+     tiene que salir firmado por la misma cuenta que lo despacha. */
+  if (!cuenta) {
+    mostrarError({ message: 'La autorización guardada no registró con qué cuenta '
+      + 'enviar. Pulsa "Volver a autorizar" una vez y vuelve a intentarlo.' });
+    return;
+  }
   const cuando = leerCuando();
   if (!cuando) { mostrarError({ message: 'Elige el día y la hora.' }); return; }
   if (cuando.getTime() < Date.now() + 60000) {

@@ -1120,7 +1120,11 @@ export async function autorizarProgramado(auth, clientId, { leer = true } = {}) 
   if (!clientId) throw new Error('El envío programado no está configurado en el servidor.');
   const marca = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   const redirectUri = `${location.origin}/oauth.html`;
-  const alcance = [GMAIL_ENVIAR, ...(leer ? [GMAIL_LEER] : [])].join(' ');
+  /* openid y email no son un capricho: hacen que el canje devuelva un
+     id_token firmado con la dirección de quien autorizó. Sin eso el
+     servidor no sabe de quién es el permiso que acaba de guardar, y
+     preguntárselo al navegador sería creerle al que no debe. */
+  const alcance = ['openid', 'email', GMAIL_ENVIAR, ...(leer ? [GMAIL_LEER] : [])].join(' ');
 
   /* access_type=offline es lo que pide el permiso duradero, y
      prompt=consent lo que obliga a Google a entregarlo de nuevo: sin
