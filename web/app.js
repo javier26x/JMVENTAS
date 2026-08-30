@@ -82,6 +82,8 @@ const estado = {
   campanas: [], campanaActual: null, destinatarios: [], cancelar: false,
   // RBD que pidieron la baja o rebotaron: se excluyen de todo segmento.
   bajas: new Set(),
+  // RBD que ya esperan turno en una campaña programada.
+  enCola: new Set(),
   // La función de seguimiento atiende el pixel, los clics y la baja de
   // un clic; si no está desplegada, el correo sale sin esas piezas.
   funcion: false,
@@ -1200,7 +1202,7 @@ function segmentoActual() {
     .filter((p) => mail.primerCorreo(p.email))
     .map((p) => ({ ...p, rbd: p.rbd ?? Number(p.id) }));
 
-  const podas = { baja: 0, repetido: 0, reciente: 0, enCurso: 0 };
+  const podas = { baja: 0, repetido: 0, reciente: 0, enCurso: 0, cola: 0 };
   /* Escribirle en frío a quien ya está en conversación es peor que no
      escribirle: llega un correo de presentación a alguien con quien hay
      una reunión hecha o una propuesta encima de la mesa. */
@@ -1211,6 +1213,7 @@ function segmentoActual() {
   for (const p of conCorreo) {
     if (estado.bajas.has(String(p.rbd))) { podas.baja += 1; continue; }
     if (CERRADOS.includes(String(p.estadoCrm || ''))) { podas.enCurso += 1; continue; }
+    if (estado.enCola.has(String(p.rbd))) { podas.cola += 1; continue; }
     if ((p.ultimoContacto?.toMillis?.() || 0) > limite) { podas.reciente += 1; continue; }
 
     const casilla = mail.primerCorreo(p.email).toLowerCase();
@@ -1228,7 +1231,26 @@ function segmentoActual() {
   return { lista: [...porCasilla.values()], podas };
 }
 
-function abrirEditorDesdeSegmento() {
+/* Quiénes están esperando en una campaña programada. Todavía no tienen
+   `ultimoContacto` —eso se escribe cuando el correo sale de verdad—, así
+   que sin esta lista una campaña armada el domingo con los mismos
+   filtros volvería a incluirlos, y el lunes recibirían dos correos en
+   frío con horas de diferencia. */
+async function cargarEnCola() {
+  const cola = new Set();
+  try {
+    if (!estado.campanas.length) estado.campanas = await mail.listarCampanas(db);
+    for (const c of estado.campanas.filter((x) => x.estado === 'programada')) {
+      for (const d of await mail.listarDestinatarios(db, c.id, true)) {
+        cola.add(String(d.rbd ?? d.id));
+      }
+    }
+  } catch { /* si falla, la guardia de 30 días sigue en pie */ }
+  estado.enCola = cola;
+}
+
+async function abrirEditorDesdeSegmento() {
+  await cargarEnCola();
   const { lista, podas } = segmentoActual();
   estado.campanaActual = {
     id: null, nombre: '', asunto: '', cuerpo: PLANTILLA,
@@ -1286,6 +1308,7 @@ function resumenSegmento() {
     podas.repetido ? `${numero(podas.repetido)} que comparten casilla` : '',
     podas.reciente ? `${numero(podas.reciente)} contactados hace menos de ${DIAS_RECONTACTO} días` : '',
     podas.enCurso ? `${numero(podas.enCurso)} ya en conversación` : '',
+    podas.cola ? `${numero(podas.cola)} esperando en una campaña programada` : '',
   ].filter(Boolean);
 
   $('segmento-resumen').innerHTML = `
@@ -1970,6 +1993,24 @@ async function enviar() {
    próxima campaña volvería a incluirlo como si nunca se le hubiera
    escrito. */
 async function marcarContactados(destinatarios, campana) {
+  /* Primero la memoria, que es instantánea y no puede fallar. La guardia
+     de 30 días mira `ultimoContacto` de las filas cargadas en pantalla,
+     no de Firestore: sin esto, armar otro segmento en la misma sesión
+     volvía a incluir a los que se acababan de contactar, y el resumen
+     decía tranquilamente "0 contactados hace menos de 30 días". Si la
+     escritura de abajo falla, el error cae del lado de no volver a
+     escribirle a alguien, que es el lado barato. */
+  const ahora = { toMillis: () => Date.now() };
+  const tocados = new Set(destinatarios.map((d) => String(d.rbd)));
+  for (const vista of ['oportunidades', 'prospectos']) {
+    for (const fila of estado[vista] || []) {
+      if (tocados.has(String(fila.rbd ?? fila.id))) fila.ultimoContacto = ahora;
+    }
+  }
+  for (const [k, fila] of estado.seleccion || []) {
+    if (tocados.has(String(fila.rbd ?? k))) fila.ultimoContacto = ahora;
+  }
+
   // En lotes y no uno por uno: con 450 destinatarios, una escritura por
   // vuelta deja la pantalla congelada minutos después de terminar el
   // envío, que es justo cuando uno cree que ya acabó.
@@ -2002,6 +2043,7 @@ async function marcarContactados(destinatarios, campana) {
       await b.commit();
     } catch { /* el estado del CRM no debe hacer fallar el envío */ }
   }
+
 }
 
 // ---------- eventos ----------
