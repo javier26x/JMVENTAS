@@ -153,18 +153,29 @@ despliegue; hay que tener los dos valores a mano.
 
 | Métrica | Objetivo | Si está bajo |
 |---------|----------|--------------|
-| Apertura | > 35% | Problema de **asunto** o de remitente. Probar variante B. |
+| Apertura | > 35% | Problema de **asunto** o de remitente. Mirar la tabla "Qué asunto se abre más". |
 | Respuesta | > 3% | Abren pero no contestan: problema del **mensaje** o de la propuesta. |
 | Rebotes + bajas | < 3% | Problema de **lista**. Limpiar antes de la próxima tanda. |
 
 El detalle de campaña muestra las tres con semáforo.
 
-**Prueba A/B.** El editor acepta una variante B de asunto y de mensaje; la
-mitad del segmento la recibe. Con menos de 30 envíos por variante la
-diferencia todavía es azar: sirve para descartar un desastre, no para coronar
-un ganador. La primera prueba que vale la pena: dolor (“51 puntos bajo el
-promedio”) contra aspiración (“colegios como el suyo subieron X puntos”). El
-ángulo de dolor abre más y a veces incomoda; hay que medirlo, no suponerlo.
+**El asunto no se escribe.** Lo pone la aplicación, rotando entre seis
+versiones —lugar, pregunta, brecha, planificación, resultados, curiosidad—, una
+por colegio y siempre la misma para el mismo colegio. Las seis llevan la comuna
+y ninguna el nombre del establecimiento: en el directorio MINEDUC los nombres
+son larguísimos y en el teléfono el asunto se corta cerca de los 40 caracteres,
+justo donde estaba el gancho. En el detalle de la campaña, la tabla **"Qué
+asunto se abre más"** las ordena por tasa de apertura y marca la que va
+ganando. Con una sola tanda todavía es ruido; con dos o tres empieza a decir
+algo.
+
+**Prueba A/B.** El editor acepta una variante B del **mensaje** (el asunto ya
+se prueba solo); la mitad del segmento la recibe. Con menos de 30 envíos por
+variante la diferencia todavía es azar: sirve para descartar un desastre, no
+para coronar un ganador. La primera prueba que vale la pena: dolor (“51 puntos
+bajo el promedio”) contra aspiración (“colegios como el suyo subieron X
+puntos”). El ángulo de dolor abre más y a veces incomoda; hay que medirlo, no
+suponerlo.
 
 ---
 

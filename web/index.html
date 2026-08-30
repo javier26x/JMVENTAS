@@ -267,10 +267,13 @@
             <input type="text" id="c-nombre" placeholder="Tier 1 · dolor alto · agosto">
           </label>
 
-          <label>Asunto <button type="button" class="ayuda" data-ayuda="c-asunto" aria-label="Qué significa">?</button>
-            <input type="text" id="c-asunto"
-                   placeholder="Matemática en {{establecimiento}}: propuesta concreta para 2027">
-          </label>
+          <div class="bloque-asunto">
+            <span class="etq">Asunto <span class="sub">automático</span>
+              <button type="button" class="ayuda" data-ayuda="c-asunto" aria-label="Qué significa">?</button></span>
+            <p class="sub">Seis versiones que rotan solas, una por colegio. La app
+              mide cuál se abre más y lo muestra en el detalle de la campaña.</p>
+            <ul id="lista-asuntos" class="asuntos"></ul>
+          </div>
 
           <label>Mensaje <button type="button" class="ayuda" data-ayuda="c-cuerpo" aria-label="Qué significa">?</button>
             <textarea id="c-cuerpo" rows="16"></textarea>
@@ -307,12 +310,10 @@
           </div>
 
           <div class="tarjeta">
-            <h3>Prueba A/B <span class="sub">opcional</span> <button type="button" class="ayuda" data-ayuda="c-asunto-b" aria-label="Qué significa">?</button></h3>
+            <h3>Prueba A/B del mensaje <span class="sub">opcional</span> <button type="button" class="ayuda" data-ayuda="c-asunto-b" aria-label="Qué significa">?</button></h3>
             <p class="sub">Si completas una variante, la mitad del segmento la recibe
-              (uno sí, uno no). Compara los resultados en el detalle de la campaña.</p>
-            <label>Asunto B
-              <input type="text" id="c-asunto-b" placeholder="Otro ángulo del mismo mensaje" autocomplete="off">
-            </label>
+              (uno sí, uno no). Compara los resultados en el detalle de la campaña.
+              El asunto ya se prueba solo, en seis versiones.</p>
             <label>Mensaje B
               <textarea id="c-cuerpo-b" rows="5"
                         placeholder="Déjalo vacío para probar sólo el asunto."></textarea>

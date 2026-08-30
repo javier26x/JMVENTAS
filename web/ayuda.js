@@ -199,9 +199,14 @@ export const AYUDA = {
     + 'revisarlas a mano en la bandeja.'],
   'c-nombre': ['Nombre interno',
     'Sólo para reconocer la campaña en el listado. El destinatario nunca lo ve.'],
-  'c-asunto': ['Asunto',
-    'Lo que decide si se abre. Admite las mismas variables que el mensaje: el '
-    + 'nombre del colegio en el asunto sube la apertura.'],
+  'c-asunto': ['Asunto automático',
+    'Lo escribe la aplicación y rota entre seis versiones, una por colegio, '
+    + 'siempre la misma para el mismo colegio. Escribirlo a mano es la '
+    + 'decisión que más se piensa y peor se acierta: uno lo juzga entero y '
+    + 'con calma, y el director lo ve truncado entre otros cuarenta durante '
+    + 'medio segundo. Las seis llevan la comuna y ninguna el nombre del '
+    + 'colegio, que en el teléfono se corta justo donde estaba el gancho. En '
+    + 'el detalle de la campaña se ve cuál se abrió más.'],
   'c-cuerpo': ['Mensaje',
     'Alimenta la sección "¿Qué es JUMP Math?" del correo. El resto de la '
     + 'pieza —saludo, dato SIMCE, beneficios, horarios, botón y firma— la '
@@ -224,10 +229,11 @@ export const AYUDA = {
     'Cuántos se envían ahora. Se propone el tope del escalón de calentamiento '
     + 'y lo que queda del cupo de hoy; el resto del segmento espera a la '
     + 'próxima tanda.'],
-  'c-asunto-b': ['Prueba A/B',
-    'Si completas asunto o mensaje B, la mitad del segmento lo recibe (uno '
-    + 'sí, uno no) y el detalle compara ambas. Con menos de 30 envíos por '
-    + 'variante la diferencia todavía es azar.'],
+  'c-asunto-b': ['Prueba A/B del mensaje',
+    'Si completas el mensaje B, la mitad del segmento lo recibe (uno sí, uno '
+    + 'no) y el detalle compara ambos. El asunto no se prueba acá: ya rota '
+    + 'solo en seis versiones. Con menos de 30 envíos por variante la '
+    + 'diferencia todavía es azar.'],
   'c-whatsapp': ['WhatsApp',
     'Aparece como botón grande y en la firma. El chat llega con el nombre del '
     + 'colegio ya escrito, así que el director no tiene que presentarse.'],

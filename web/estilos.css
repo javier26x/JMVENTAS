@@ -788,6 +788,22 @@ th .ayuda { vertical-align: baseline; }
 .env.error, .env.rebotado { color: var(--critico); font-weight: 550; }
 .env.baja { color: var(--critico); font-weight: 550; }
 .env.programado { color: var(--acento); font-weight: 600; }
+
+/* Los seis asuntos que rotan. Se leen, no se editan. */
+.bloque-asunto { margin: 14px 0; }
+.bloque-asunto .etq { display: block; font-weight: 600; font-size: 13px; }
+.asuntos { list-style: none; margin: 8px 0 0; padding: 0; }
+.asuntos li {
+  padding: 7px 11px; border: 1px solid var(--linea); border-radius: 7px;
+  margin-bottom: 5px; font-size: 13px; color: var(--tinta-2);
+  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+}
+.asuntos li.suya {
+  border-color: var(--acento); color: var(--tinta); font-weight: 550;
+}
+.asuntos .marca {
+  font-size: 11px; font-weight: 500; color: var(--acento); white-space: nowrap;
+}
 .env.malo { color: var(--critico); font-weight: 550; }
 
 /* Programar el envío: día, hora y un atajo al lunes temprano. */

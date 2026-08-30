@@ -1210,9 +1210,7 @@ Para 2027 vamos a acompañar de cerca a un grupo acotado de colegios en la imple
 function abrirEditor() {
   const c = estado.campanaActual;
   $('c-nombre').value = c.nombre || '';
-  $('c-asunto').value = c.asunto || '';
   $('c-cuerpo').value = c.cuerpo || '';
-  $('c-asunto-b').value = c.asuntoB || '';
   $('c-cuerpo-b').value = c.cuerpoB || '';
   $('c-track-aperturas').checked = Boolean(c.track);
   $('c-evidencia').checked = Boolean(c.evidencia);
@@ -1556,12 +1554,32 @@ $('c-plantilla').addEventListener('click', (e) => {
   previsualizar();
 });
 
+/* Las seis versiones, con la del destinatario de la vista previa
+   marcada. No se elige ninguna: se muestran para que quien manda sepa
+   exactamente qué va a aparecer en la bandeja, que es distinto de
+   poder cambiarlo. */
+function pintarAsuntos() {
+  const caja = $('lista-asuntos');
+  if (!caja) return;
+  const ejemplo = estado.destinatarios[0];
+  const ctx = ctxCorreo();
+  const suya = ejemplo ? mail.asuntoDe(ejemplo, ctx).variante : -2;
+  caja.innerHTML = mail.ASUNTOS.map((plantilla, i) => {
+    const texto = ejemplo
+      ? mail.aplicarVariables(plantilla, ejemplo, ctx)
+      : plantilla;
+    return `<li class="${i === suya ? 'suya' : ''}">${esc(texto)}${
+      i === suya ? '<span class="marca">la de este colegio</span>' : ''}</li>`;
+  }).join('');
+}
+
 function previsualizar() {
   const ejemplo = estado.destinatarios[0];
   const caja = $('previsualizacion');
+  pintarAsuntos();
   if (!ejemplo) { caja.textContent = 'Sin destinatarios en el segmento.'; return; }
   const ctx = ctxCorreo();
-  const asunto = mail.aplicarVariables($('c-asunto').value, ejemplo, ctx);
+  const asunto = mail.asuntoDe(ejemplo, ctx).texto;
   const texto = mail.aplicarVariables($('c-cuerpo').value, ejemplo, ctx);
 
   caja.innerHTML = `<span class="asunto">${esc(asunto)}</span>`
@@ -1588,7 +1606,7 @@ async function pintarCampanas() {
     const chip = { enviada: 'enviado', programada: 'programado', error: 'malo' }[c.estado]
       || 'pendiente';
     return `<tr>
-      <td><div class="nombre">${esc(c.nombre)}</div><div class="sub">${esc(c.asunto)}</div></td>
+      <td><div class="nombre">${esc(c.nombre)}</div><div class="sub">${esc(c.asunto || 'Asunto automático')}</div></td>
       <td><span class="env ${chip}">${esc(c.estado)}</span>${
         c.estado === 'programada' && c.programadaPara
           ? `<div class="sub">${esc(cuandoSale(c.programadaPara))}</div>` : ''}${
@@ -1680,8 +1698,10 @@ async function abrirDetalle(id) {
 function pintarComparacion(dest, campana) {
   const caja = $('ab-comparacion');
   const hayB = dest.some((d) => d.variante === 'B');
-  caja.classList.toggle('oculto', !hayB);
-  if (!hayB) return;
+  const porAsunto = comparacionAsuntos(dest, campana);
+  caja.classList.toggle('oculto', !hayB && !porAsunto);
+  if (!hayB && !porAsunto) return;
+  if (!hayB) { caja.innerHTML = porAsunto; return; }
 
   const fila = (nombre, asunto, filas) => {
     const env = filas.filter((d) => !['pendiente', 'error'].includes(d.estado)).length;
@@ -1700,13 +1720,51 @@ function pintarComparacion(dest, campana) {
         <th class="num">Abrieron</th><th class="num">Respuesta</th>
         <th class="num">Respuestas</th></tr></thead>
       <tbody>
-        ${fila('A', campana?.asunto, dest.filter((d) => d.variante !== 'B'))}
-        ${fila('B', campana?.asuntoB, dest.filter((d) => d.variante === 'B'))}
+        ${fila('A', 'mensaje original', dest.filter((d) => d.variante !== 'B'))}
+        ${fila('B', 'mensaje alternativo', dest.filter((d) => d.variante === 'B'))}
       </tbody>
     </table>
     <p class="sub" style="padding:8px 14px 12px">Con menos de 30 envíos por
       variante la diferencia todavía es azar; sirve para descartar un desastre,
       no para elegir ganador.</p>
+  </div>` + porAsunto;
+}
+
+/* Qué asunto abrió mejor. Es el sentido de rotar seis: sin esta tabla,
+   la rotación sólo sería variedad. Se ordena por tasa de apertura, que
+   es lo que el asunto controla —lo que pase después ya es del mensaje. */
+function comparacionAsuntos(dest, campana) {
+  const enviados = dest.filter((d) => !['pendiente', 'error'].includes(d.estado)
+    && Number.isInteger(d.asuntoVariante));
+  if (!campana?.track || enviados.length < 2) return '';
+
+  const grupos = new Map();
+  for (const d of enviados) {
+    const g = grupos.get(d.asuntoVariante) || { texto: d.asunto || '', env: 0, abr: 0, res: 0 };
+    g.env += 1;
+    if ((d.aperturas || 0) > 0) g.abr += 1;
+    if (d.estado === 'respondido') g.res += 1;
+    grupos.set(d.asuntoVariante, g);
+  }
+  if (grupos.size < 2) return '';
+
+  const filas = [...grupos.values()]
+    .sort((a, b) => (b.abr / b.env) - (a.abr / a.env))
+    .map((g, i) => `<tr>
+      <td>${i === 0 && g.abr ? '<b>▲</b> ' : ''}${esc(g.texto)}</td>
+      <td class="num">${numero(g.env)}</td>
+      <td class="num">${porcentaje(g.abr, g.env)}%</td>
+      <td class="num">${numero(g.res)}</td></tr>`).join('');
+
+  return `<h3 style="margin:18px 0 8px">Qué asunto se abre más</h3>
+    <div class="envoltura"><table>
+      <thead><tr><th>Asunto</th><th class="num">Enviados</th>
+        <th class="num">Abrieron</th><th class="num">Respuestas</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+    <p class="sub" style="padding:8px 14px 12px">Los asuntos rotan solos, uno por
+      colegio. Con pocas decenas de envíos por versión esto todavía es ruido;
+      después de dos o tres tandas empieza a significar algo.</p>
   </div>`;
 }
 
@@ -1779,7 +1837,6 @@ function progreso(txt) {
 async function enviar() {
   const c = estado.campanaActual;
   if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail antes de enviar.' }); return; }
-  if (!$('c-asunto').value.trim()) { mostrarError({ message: 'Falta el asunto.' }); return; }
   if (!estado.destinatarios.length) { mostrarError({ message: 'El segmento no tiene destinatarios con correo.' }); return; }
 
   // El cupo del día manda: pasarlo es lo que gatilla los bloqueos.
@@ -1796,15 +1853,15 @@ async function enviar() {
   const restantes = estado.destinatarios.length - tanda.length;
   if (!confirm(`Se enviarán ${tanda.length} correos desde ${mail.gmailCorreo()}.\n`
     + (restantes ? `Quedan ${restantes} para las próximas tandas.\n` : '')
-    + ($('c-asunto-b').value.trim() || $('c-cuerpo-b').value.trim()
+    + ($('c-cuerpo-b').value.trim()
       ? 'La mitad recibirá la variante B.\n' : '')
     + (momento ? `\n⚠ ${momento}\n` : '')
     + '\nCada uno es un mensaje real. ¿Continuar?')) return;
 
   Object.assign(c, {
     nombre: $('c-nombre').value.trim() || 'Sin nombre',
-    asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value,
-    asuntoB: $('c-asunto-b').value.trim(), cuerpoB: $('c-cuerpo-b').value.trim(),
+    cuerpo: $('c-cuerpo').value,
+    cuerpoB: $('c-cuerpo-b').value.trim(),
     evidencia: $('c-evidencia').checked,
     track: $('c-track-aperturas').checked,
   });
@@ -2233,7 +2290,6 @@ async function programar() {
     mostrarError({ message: 'Esa hora ya pasó. Elige un momento futuro.' });
     return;
   }
-  if (!$('c-asunto').value.trim()) { mostrarError({ message: 'Falta el asunto.' }); return; }
   if (!estado.destinatarios.length) {
     mostrarError({ message: 'El segmento no tiene destinatarios con correo.' });
     return;
@@ -2253,8 +2309,8 @@ async function programar() {
 
   Object.assign(c, {
     nombre: $('c-nombre').value.trim() || 'Sin nombre',
-    asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value,
-    asuntoB: $('c-asunto-b').value.trim(), cuerpoB: $('c-cuerpo-b').value.trim(),
+    cuerpo: $('c-cuerpo').value,
+    cuerpoB: $('c-cuerpo-b').value.trim(),
     evidencia: $('c-evidencia').checked,
     track: $('c-track-aperturas').checked,
   });
@@ -2351,7 +2407,7 @@ $('c-ver-grande').addEventListener('click', () => {
 });
 
 for (const [id, fn] of [
-  ['c-asunto', previsualizar], ['c-cuerpo', previsualizar],
+  ['c-cuerpo', previsualizar],
   ['c-whatsapp', () => { guardarContacto(); previsualizar(); }],
   ['c-sitio', () => { guardarContacto(); previsualizar(); }],
 ]) $(id).addEventListener('input', fn);
@@ -2433,8 +2489,8 @@ $('c-guardar').addEventListener('click', async () => {
   const c = estado.campanaActual;
   Object.assign(c, {
     nombre: $('c-nombre').value.trim() || 'Sin nombre',
-    asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value,
-    asuntoB: $('c-asunto-b').value.trim(), cuerpoB: $('c-cuerpo-b').value.trim(),
+    cuerpo: $('c-cuerpo').value,
+    cuerpoB: $('c-cuerpo-b').value.trim(),
     evidencia: $('c-evidencia').checked,
     track: $('c-track-aperturas').checked,
   });
@@ -2458,7 +2514,7 @@ $('c-prueba').addEventListener('click', async () => {
   $('c-prueba').disabled = true;
   try {
     await mail.enviarPrueba(
-      { asunto: $('c-asunto').value, cuerpo: $('c-cuerpo').value },
+      { cuerpo: $('c-cuerpo').value },
       ejemplo, ctxCorreo());
     progreso(`Prueba enviada a ${mail.gmailCorreo()} con los datos de `
       + `${ejemplo.establecimiento}. Revísala antes de enviar la campaña.`);

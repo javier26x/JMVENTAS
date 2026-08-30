@@ -143,6 +143,51 @@ export function aplicarVariables(texto, prospecto, ctx) {
 }
 const saline = (s, buscar, reemplazo) => s.split(buscar).join(reemplazo);
 
+/* ---------- el asunto ----------
+   Lo escribe la aplicación y rota solo. Escribir un asunto a mano por
+   campaña es la decisión que más se piensa y peor se acierta: uno lo
+   juzga leyéndolo entero y con calma, y el director lo ve truncado,
+   entre otros cuarenta, durante medio segundo.
+
+   Las seis versiones atacan ángulos distintos —lugar, pregunta, dato,
+   planificación, resultado, curiosidad— para que la comparación diga
+   algo. Todas llevan la comuna y ninguna el nombre del colegio: en
+   MINEDUC los nombres son larguísimos y en el teléfono se cortan justo
+   donde estaba el gancho. Ninguna usa mayúsculas sostenidas, signos de
+   exclamación ni palabras como "gratis" u "oferta", que es lo que mira
+   un filtro antes de decidir si esto es una campaña. */
+export const ASUNTOS = [
+  'Matemática en {{comuna}}, pensando en 2027',
+  'Una pregunta sobre matemática en {{comuna}}',
+  'La brecha de matemática en {{comuna}}',
+  '{{comuna}}: matemática para el plan 2027',
+  'Matemática en {{comuna}}: los resultados',
+  // La comuna al principio: con un nombre largo —San Pedro de la Paz—
+  // el teléfono corta cerca de los 40 caracteres, y si la comuna queda
+  // al final se pierde justo lo que hacía personal el asunto.
+  '{{comuna}}: qué están probando en matemática',
+];
+
+/* Sin comuna no hay ninguna de las seis que se sostenga: antes que
+   mandar "Matemática en , pensando en 2027" va una versión neutra. */
+const ASUNTO_NEUTRO = 'Matemática para el plan 2027';
+
+/**
+ * El asunto que le toca a un destinatario.
+ *
+ * Se decide por RBD y no al azar: el mismo colegio recibe siempre el
+ * mismo asunto —la vista previa muestra el de verdad y un reenvío no lo
+ * cambia—, y el reparto entre las seis queda parejo porque el RBD no
+ * guarda relación con la comuna ni con el tamaño del colegio.
+ */
+export function asuntoDe(prospecto, ctx) {
+  if (!String(prospecto?.comuna || '').trim()) {
+    return { variante: -1, texto: ASUNTO_NEUTRO };
+  }
+  const n = Math.abs(Number(prospecto?.rbd ?? prospecto?.id) || 0) % ASUNTOS.length;
+  return { variante: n, texto: aplicarVariables(ASUNTOS[n], prospecto, ctx) };
+}
+
 const escaparHtml = (s) => String(s ?? '').replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -678,9 +723,9 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
   const id = campana.id || doc(collection(db, 'campanas')).id;
   await setDoc(doc(db, 'campanas', id), {
     nombre: campana.nombre || 'Sin nombre',
-    asunto: campana.asunto || '',
+    // El asunto ya no se guarda en la campaña: lo decide asuntoDe() por
+    // destinatario, y queda registrado en cada uno.
     cuerpo: campana.cuerpo || '',
-    asuntoB: campana.asuntoB || '',
     cuerpoB: campana.cuerpoB || '',
     seguimientoDe: campana.seguimientoDe || '',
     evidencia: Boolean(campana.evidencia),
@@ -757,7 +802,7 @@ export async function enviarCampana(db, campana, destinatarios, ctx, alAvanzar) 
   // Con variante B el reparto es alternado, no por mitades: el segmento
   // llega ordenado por dolor o matrícula, y cortarlo en dos daría a cada
   // variante una población distinta.
-  const usaB = Boolean(campana.asuntoB || campana.cuerpoB);
+  const usaB = Boolean(campana.cuerpoB);
   let enviados = 0;
   let errores = 0;
 
@@ -772,8 +817,7 @@ export async function enviarCampana(db, campana, destinatarios, ctx, alAvanzar) 
 
     const variante = usaB && i % 2 === 1 ? 'B' : 'A';
     const prospecto = ctx.prospectos.get(String(d.rbd)) || d;
-    const asunto = aplicarVariables(
-      variante === 'B' && campana.asuntoB ? campana.asuntoB : campana.asunto, prospecto, ctx);
+    const { texto: asunto, variante: asuntoVariante } = asuntoDe(prospecto, ctx);
     const texto = aplicarVariables(
       variante === 'B' && campana.cuerpoB ? campana.cuerpoB : campana.cuerpo, prospecto, ctx);
     const html = correoHtml({
@@ -801,6 +845,10 @@ export async function enviarCampana(db, campana, destinatarios, ctx, alAvanzar) 
         threadId: res.threadId || d.threadId || '',
         messageId: res.id || '',
         variante,
+        // Qué asunto le tocó, para poder preguntar después cuál abrió
+        // mejor en vez de discutirlo de memoria.
+        asunto,
+        asuntoVariante,
         error: '',
       });
       enviados += 1;
@@ -880,7 +928,7 @@ export function tandaRecomendada(historial) {
 /** Envía el correo a la propia cuenta conectada, con los datos de un
  *  destinatario real ya reemplazados. No toca la campaña ni el CRM. */
 export async function enviarPrueba(campana, prospecto, ctx) {
-  const asunto = aplicarVariables(campana.asunto, prospecto, ctx);
+  const { texto: asunto } = asuntoDe(prospecto, ctx);
   const texto = aplicarVariables(campana.cuerpo, prospecto, ctx);
   const html = correoHtml({ texto, prospecto, ctx, base: location.origin, track: false });
   await gmail('/messages/send', {
@@ -1116,7 +1164,7 @@ export async function programarCampana(db, campana, tanda, ctx, uid, cuando, alA
   const remitente = ctx.remitenteProgramado || gmailCorreo();
   if (!remitente) throw new Error('No hay una cuenta autorizada para enviar.');
   const esSeguimiento = Boolean(campana.seguimientoDe);
-  const usaB = Boolean(campana.asuntoB || campana.cuerpoB);
+  const usaB = Boolean(campana.cuerpoB);
 
   /* Nace como borrador y recién al final pasa a programada: si algo
      falla a mitad de la redacción, lo que queda es un borrador
@@ -1131,8 +1179,7 @@ export async function programarCampana(db, campana, tanda, ctx, uid, cuando, alA
     if (!d.email) continue;
     const variante = usaB && i % 2 === 1 ? 'B' : 'A';
     const prospecto = ctx.prospectos?.get(String(d.rbd)) || d;
-    const asunto = aplicarVariables(
-      variante === 'B' && campana.asuntoB ? campana.asuntoB : campana.asunto, prospecto, ctx);
+    const { texto: asunto, variante: asuntoVariante } = asuntoDe(prospecto, ctx);
     const texto = aplicarVariables(
       variante === 'B' && campana.cuerpoB ? campana.cuerpoB : campana.cuerpo, prospecto, ctx);
     const html = correoHtml({
@@ -1146,7 +1193,8 @@ export async function programarCampana(db, campana, tanda, ctx, uid, cuando, alA
     });
 
     lote.set(doc(db, 'campanas', id, 'destinatarios', String(d.rbd)),
-      { crudo, variante, estado: 'pendiente', error: '' }, { merge: true });
+      { crudo, variante, asunto, asuntoVariante, estado: 'pendiente', error: '' },
+      { merge: true });
     listos += 1;
     enLote += 1;
     // Lotes cortos a propósito: cada mensaje redactado pesa unos 20 KB y
