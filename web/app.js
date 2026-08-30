@@ -1215,6 +1215,7 @@ function abrirEditor() {
   $('c-evidencia').checked = Boolean(c.evidencia);
   delete $('c-tanda').dataset.tocado;
   restaurarContacto();
+  pintarDisenio();
   $('segmento-desc').textContent = c.segmento?.desc || '—';
   resumenSegmento();
   pintarTanda();
@@ -1311,6 +1312,8 @@ function ctxCorreo(extra = {}) {
     remitente: mail.gmailCorreo() || '',
     evidencia: $('c-evidencia').checked,
     funcion: estado.funcion,
+    plantilla: estado.campanaActual?.plantilla || 'lamina',
+    tema: estado.campanaActual?.tema || 'claro',
     ...extra,
   };
 }
@@ -1454,6 +1457,40 @@ function pintarAgenda() {
     + (elegidos.length >= MAX_HORARIOS
       ? '<span class="ag-vacio">Máximo 3 · quita uno para cambiarlo.</span>' : '');
 }
+
+/* ---------- diseño del correo ----------
+   El contenido es el mismo en las cinco plantillas: cambia qué bloques
+   aparecen y con qué forma. Poder probarlas es lo que permite descubrir
+   cuál abre más en esta base, en vez de discutirlo. */
+function pintarDisenio() {
+  const c = estado.campanaActual || {};
+  $('c-tema').innerHTML = Object.entries(mail.TEMAS).map(([id, t]) => `
+    <button type="button" data-tema="${id}"
+            aria-pressed="${(c.tema || 'claro') === id}">${esc(t.nombre)}</button>`).join('');
+
+  $('c-plantilla').innerHTML = Object.entries(mail.PLANTILLAS).map(([id, p]) => `
+    <button type="button" class="plantilla" data-plantilla="${id}"
+            aria-pressed="${(c.plantilla || 'lamina') === id}">
+      <span class="nombre">${esc(p.nombre)}</span>
+      <span class="sub">${esc(p.idea)}</span>
+    </button>`).join('');
+}
+
+$('c-tema').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tema]');
+  if (!b) return;
+  estado.campanaActual.tema = b.dataset.tema;
+  pintarDisenio();
+  previsualizar();
+});
+
+$('c-plantilla').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-plantilla]');
+  if (!b) return;
+  estado.campanaActual.plantilla = b.dataset.plantilla;
+  pintarDisenio();
+  previsualizar();
+});
 
 function previsualizar() {
   const ejemplo = estado.destinatarios[0];

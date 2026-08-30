@@ -645,6 +645,28 @@ th .ayuda { vertical-align: baseline; }
   font-size: 13px;
 }
 
+/* Selector de diseño del correo: modo y plantilla. */
+.modos { display: flex; gap: 6px; margin-bottom: 10px; }
+.modos button { flex: 1; font-size: 13px; padding: 8px 12px; }
+.modos button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acento) 16%, transparent);
+  border-color: var(--acento);
+  font-weight: 550;
+}
+.plantillas { display: grid; gap: 6px; }
+.plantilla {
+  display: block;
+  text-align: left;
+  padding: 9px 12px;
+  line-height: 1.45;
+}
+.plantilla .nombre { display: block; font-size: 13px; font-weight: 600; }
+.plantilla .sub { display: block; font-size: 12px; color: var(--tinta-apagada); }
+.plantilla[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acento) 12%, transparent);
+  border-color: var(--acento);
+}
+
 /* Tamaño de la tanda y su nota de calentamiento. */
 .linea-tanda {
   flex-direction: row !important;

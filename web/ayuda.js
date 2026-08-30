@@ -209,6 +209,14 @@ export const AYUDA = {
   variables: ['Variables',
     'Se reemplazan por los datos del destinatario al momento de enviar. Haz '
     + 'clic para insertarlas donde esté el cursor.'],
+  'c-plantilla': ['Diseño del correo',
+    'El contenido es el mismo en las cinco plantillas: cambia qué bloques '
+    + 'aparecen y con qué forma. "Lámina" es la completa; "Mínimo" es la que '
+    + 'mejor pasa los filtros de spam porque casi no lleva imágenes. El modo '
+    + 'oscuro no depende del cliente de correo: el correo sale oscuro para '
+    + 'todos, y por eso se ve igual en cualquier bandeja. Cuál abre más en '
+    + 'esta base se descubre probando, no discutiendo: usa la variante B '
+    + 'para medirlo.'],
   'c-recalcular': ['Recalcular',
     'Vuelve a leer los filtros de la vista de prospectos y rehace la lista de '
     + 'destinatarios.'],

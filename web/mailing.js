@@ -172,6 +172,70 @@ const MARCA = {
   identidad: 'JUMP Math Chile · Santiago de Chile',
 };
 
+/* Dos modos y cinco plantillas. El modo decide los colores; la plantilla,
+   qué bloques aparecen y con qué forma. Separarlos evita diez piezas de
+   HTML distintas que se desincronizan a la primera corrección. */
+export const TEMAS = {
+  claro: {
+    nombre: 'Claro',
+    fondo: '#eef1f5', tarjeta: '#ffffff',
+    tinta: '#333333', tinta2: '#5a6b84', tinta3: '#8a93a3',
+    linea: '#e6e9ef', suave: '#f2f6fc', pastilla: '#f4f6f9',
+    titulo: '#14345c', acento: '#e8443a',
+    verdeFondo: '#eef7f0', verdeTitulo: '#1e6b40', verdeTexto: '#2c4a38',
+    urgencia: '#fdefee', chip: '#eef2f8', chipTinta: '#3d4c63',
+    logo: '/img/logo-jumpmath.png?v=3',
+    firma: '/img/firma-macarena.png?v=2',
+  },
+  oscuro: {
+    nombre: 'Oscuro',
+    fondo: '#080d14', tarjeta: '#131c26',
+    tinta: '#e4ebf3', tinta2: '#a3b3c6', tinta3: '#7b8a9c',
+    linea: '#26313f', suave: '#1a2735', pastilla: '#1a2735',
+    // Sobre fondo oscuro, el navy de marca no se lee: sube a un azul claro.
+    titulo: '#9dbcf0', acento: '#ff7063',
+    verdeFondo: '#14261c', verdeTitulo: '#7cc79b', verdeTexto: '#bdd7c7',
+    urgencia: '#2a1a1c', chip: '#1f2c3b', chipTinta: '#b6c4d4',
+    logo: '/img/logo-jumpmath-oscuro.png?v=3',
+    // La misma firma con tinta clara: un filtro CSS no lo resuelve,
+    // porque los clientes de correo no lo aplican.
+    firma: '/img/firma-macarena-oscura.png?v=1',
+  },
+};
+
+export const PLANTILLAS = {
+  lamina: {
+    nombre: 'Lámina',
+    idea: 'La completa: ilustración, cifras a dos columnas y beneficios en rejilla.',
+    ilustracion: true, cifras: 'tarjeta', beneficios: 'rejilla',
+    prueba: true, reunion: true, urgencia: true,
+  },
+  carta: {
+    nombre: 'Carta',
+    idea: 'Sobria, sin imágenes ni cajas. Se lee como una carta escrita a mano.',
+    ilustracion: false, cifras: 'linea', beneficios: 'lista',
+    prueba: false, reunion: true, urgencia: false,
+  },
+  titular: {
+    nombre: 'Titular',
+    idea: 'Abre con la brecha en grande sobre una banda de color. Directa al dolor.',
+    ilustracion: false, cifras: 'banda', beneficios: 'rejilla',
+    prueba: true, reunion: true, urgencia: true,
+  },
+  ficha: {
+    nombre: 'Ficha',
+    idea: 'Estética de informe: los datos en filas, líneas finas, cero adornos.',
+    ilustracion: false, cifras: 'tabla', beneficios: 'lista',
+    prueba: true, reunion: true, urgencia: false,
+  },
+  minimo: {
+    nombre: 'Mínimo',
+    idea: 'Sólo saludo, dato, texto y botón. El que mejor pasa los filtros.',
+    ilustracion: false, cifras: 'linea', beneficios: 'ninguno',
+    prueba: false, reunion: false, urgencia: false,
+  },
+};
+
 /**
  * El correo completo como pieza diseñada, pero construida en HTML.
  *
@@ -180,10 +244,13 @@ const MARCA = {
  * en colegios— bloquea imágenes por defecto, con lo que el destinatario
  * vería un rectángulo vacío. Acá el nombre del colegio y su SIMCE son
  * texto real con aspecto de lámina: llegan aunque las imágenes no.
- * Tablas e estilos en línea porque es lo único que respetan los clientes
+ * Tablas y estilos en línea porque es lo único que respetan los clientes
  * de correo.
  */
 export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track, breve }) {
+  const T = TEMAS[ctx?.tema] || TEMAS.claro;
+  const P = PLANTILLAS[ctx?.plantilla] || PLANTILLAS.lamina;
+
   /* Todo enlace pasa por el registro de clics cuando hay seguimiento: un
      clic en el botón de WhatsApp es la señal de compra más fuerte que
      produce esta pieza. */
@@ -194,7 +261,7 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
 
   let cuerpo = escaparHtml(texto).replace(/\n/g, '<br>');
   cuerpo = cuerpo.replace(/(https?:\/\/[^\s<]+)/g,
-    (url) => `<a href="${enlace(url)}" style="color:${MARCA.navy}">${url}</a>`);
+    (url) => `<a href="${enlace(url)}" style="color:${T.titulo}">${url}</a>`);
   const pixel = track
     ? `<img src="${base}/t/o/${campanaId}/${rbd}" width="1" height="1" alt="" style="display:none">`
     : '';
@@ -203,7 +270,8 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
   const comuna = escaparHtml(titulo(prospecto?.comuna || ''));
   const simce = Number(prospecto?.simceMate);
   const anio = prospecto?.simceAnio || '';
-  const brecha = Number.isFinite(simce) ? Math.round((ctx?.promedio || 253) - simce) : null;
+  const promedio = ctx?.promedio || 253;
+  const brecha = Number.isFinite(simce) ? Math.round(promedio - simce) : null;
 
   /* WhatsApp con el mensaje ya escrito y el colegio adentro: el director
      toca el botón y el chat llega auto-identificado. */
@@ -223,22 +291,18 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
     .map((h) => h.trim()).filter(Boolean).slice(0, 3);
   /* La página de evidencia sólo se enlaza cuando quien envía la activa:
      una promesa de pruebas que lleva a una página a medio escribir hace
-     más daño que no prometer nada. */
-  /* La página lleva el WhatsApp en la dirección: quien llega desde el
-     correo encuentra el mismo botón, sin que la página tenga que guardar
-     un número que después habría que ir a cambiar a mano. */
+     más daño que no prometer nada. El WhatsApp viaja en la dirección para
+     que la página no tenga que guardar un número que después cambie. */
   const evidencia = ctx?.evidencia && base
     ? `${base}/evidencia.html${waNum.length >= 11 ? `?wa=${waNum}` : ''}` : '';
-  /* Baja en un clic, servida por la función de seguimiento. Quien la usa
-     deja de ser una marca de spam: es la salida barata que protege la
-     reputación del remitente. Sin función desplegada queda el BAJA por
-     respuesta, que se detecta al revisar el buzón. */
   const bajaUrl = ctx?.funcion ? urlBaja(base, campanaId, rbd) : '';
 
   const f = 'font-family:Arial,Helvetica,sans-serif';
+  const M = 'padding-left:34px;padding-right:34px';
+  const fila = (contenido, arriba = 0, abajo = 0) => `<tr><td style="${M}${
+    arriba ? `;padding-top:${arriba}px` : ''}${abajo ? `;padding-bottom:${abajo}px` : ''}">${
+    contenido}</td></tr>`;
 
-  /* La línea de vista previa de la bandeja: el dato duro y la facilidad
-     de agendar, que es lo que hace abrir. */
   const gancho = escaparHtml([
     brecha > 0
       ? `${brecha} puntos bajo el promedio nacional en Matemática 4º básico`
@@ -247,297 +311,283 @@ export function correoHtml({ texto, prospecto, ctx, base, campanaId, rbd, track,
       ? `${horarios.length} horarios concretos para una reunión de 30 minutos`
       : 'Una reunión de 30 minutos para mostrarles cómo funciona',
   ].join(' · '));
-  /* Un solo margen lateral para todo el correo. Es lo que hace que el ojo
-     lea una columna y no una sucesión de bloques sueltos. */
-  const M = 'padding-left:34px;padding-right:34px';
 
-  /* Las dos cifras se leen como par comparado, así que ambas columnas
-     llevan la misma estructura: número, etiqueta, nota al pie. */
+  // ---------- bloques ----------
+  const logo = (ancho = 190) => `<img src="${base}${T.logo}" width="${ancho}"
+    alt="JUMP Math Chile" style="display:block;border:0;max-width:${ancho}px">`;
+
+  const kicker = `<div style="${f};font-size:12px;font-weight:bold;letter-spacing:.08em;
+    text-transform:uppercase;color:${T.acento}">${colegio}${comuna
+    ? `<span style="color:${T.tinta3};font-weight:normal">&nbsp;&nbsp;·&nbsp;&nbsp;${comuna}</span>` : ''}</div>`;
+
+  const titular = `<div style="${f};font-size:24px;line-height:1.3;color:${T.titulo}">
+    <b>Una oportunidad concreta</b> para seguir mejorando en
+    <b>Matemática 4º básico.</b></div>`;
+
   const cifra = (num, etiqueta, nota, color) => `
     <div style="${f};font-size:36px;line-height:1;font-weight:bold;color:${color}">${num}</div>
     <div style="${f};font-size:12.5px;font-weight:bold;line-height:1.35;
-      color:${MARCA.navy};padding-top:7px">${etiqueta}</div>
-    ${nota ? `<div style="${f};font-size:12px;line-height:1.4;color:#5a6b84;
+      color:${T.titulo};padding-top:7px">${etiqueta}</div>
+    ${nota ? `<div style="${f};font-size:12px;line-height:1.4;color:${T.tinta2};
       padding-top:4px">${nota}</div>` : ''}`;
 
-  const tarjetaSimce = Number.isFinite(simce) ? `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-           style="background:#f2f6fc;border-left:4px solid ${MARCA.rojo};border-radius:0 10px 10px 0">
-      <tr>
-        <td width="50%" valign="top" style="padding:18px 16px 18px 20px;border-right:1px solid #dde5f0">
-          ${cifra(Math.round(simce), `puntos en SIMCE Matemática<br>4º básico${anio ? ` ${escaparHtml(anio)}` : ''}`, '', MARCA.navy)}
-        </td>
-        <td width="50%" valign="top" style="padding:18px 20px 18px 18px">
-          ${brecha > 0
-    ? cifra(brecha, `puntos bajo el promedio<br>nacional (${ctx?.promedio || 253})`,
-      'Una brecha que un método estructurado puede cerrar.', MARCA.rojo)
-    : cifra(ctx?.promedio || 253, 'es el promedio nacional<br>de referencia', '', MARCA.navy)}
-        </td>
-      </tr>
-    </table>` : '';
+  const etiquetaSimce = `puntos en SIMCE Matemática<br>4º básico${anio ? ` ${escaparHtml(anio)}` : ''}`;
+
+  function bloqueCifras() {
+    if (!Number.isFinite(simce)) return '';
+    if (P.cifras === 'tarjeta') {
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+           style="background:${T.suave};border-left:4px solid ${T.acento};border-radius:0 10px 10px 0">
+        <tr>
+          <td width="50%" valign="top" style="padding:18px 16px 18px 20px;border-right:1px solid ${T.linea}">
+            ${cifra(Math.round(simce), etiquetaSimce, '', T.titulo)}</td>
+          <td width="50%" valign="top" style="padding:18px 20px 18px 18px">
+            ${brecha > 0
+    ? cifra(brecha, `puntos bajo el promedio<br>nacional (${promedio})`,
+      'Una brecha que un método estructurado puede cerrar.', T.acento)
+    : cifra(promedio, 'es el promedio nacional<br>de referencia', '', T.titulo)}</td>
+        </tr></table>`;
+    }
+    if (P.cifras === 'banda') {
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+           style="background:${T.acento};border-radius:12px">
+        <tr><td style="padding:26px 28px;${f}" align="center">
+          <div style="font-size:56px;line-height:1;font-weight:bold;color:#ffffff">
+            ${brecha > 0 ? brecha : Math.round(simce)}</div>
+          <div style="font-size:15px;line-height:1.45;color:#ffffff;padding-top:10px">
+            ${brecha > 0
+    ? `puntos bajo el promedio nacional<br>en Matemática 4º básico${anio ? ` (${escaparHtml(anio)})` : ''}`
+    : `puntos en SIMCE Matemática 4º básico${anio ? ` ${escaparHtml(anio)}` : ''}`}</div>
+        </td></tr></table>`;
+    }
+    if (P.cifras === 'tabla') {
+      const renglon = (a, b, ultimo) => `<tr>
+        <td style="padding:11px 0;${f};font-size:13.5px;color:${T.tinta2}${
+  ultimo ? '' : `;border-bottom:1px solid ${T.linea}`}">${a}</td>
+        <td align="right" style="padding:11px 0;${f};font-size:14px;font-weight:bold;
+          color:${T.tinta}${ultimo ? '' : `;border-bottom:1px solid ${T.linea}`}">${b}</td></tr>`;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+           style="border-top:2px solid ${T.titulo}">
+        ${renglon(`SIMCE Matemática 4º básico${anio ? ` · ${escaparHtml(anio)}` : ''}`,
+    `${Math.round(simce)} puntos`)}
+        ${renglon('Promedio nacional de referencia', `${promedio} puntos`)}
+        ${brecha > 0
+    ? renglon('<b style="color:' + T.acento + '">Brecha</b>',
+      `<span style="color:${T.acento}">${brecha} puntos</span>`, true)
+    : renglon('Sobre el promedio', 'sí', true)}
+      </table>`;
+    }
+    // 'linea': una sola frase, sin caja
+    return `<div style="${f};font-size:14.5px;line-height:1.6;color:${T.tinta}">
+      Su establecimiento obtuvo <b style="color:${T.titulo}">${Math.round(simce)} puntos</b>
+      en SIMCE Matemática de 4º básico${anio ? ` (${escaparHtml(anio)})` : ''}${brecha > 0
+    ? `, <b style="color:${T.acento}">${brecha} bajo el promedio nacional</b> de ${promedio}.`
+    : `, sobre el promedio nacional de ${promedio}.`}</div>`;
+  }
+
+  const BENEFICIOS = [
+    ['ic-grafico', 'Mejora significativa en los resultados SIMCE.'],
+    ['ic-personas', 'Aumento de motivación y autoestima académica.'],
+    ['ic-lista', 'Docentes con secuencias claras y fáciles de aplicar.'],
+    ['ic-diana', 'Alineado a las Bases Curriculares del Mineduc.'],
+  ];
+
+  function bloqueBeneficios() {
+    if (P.beneficios === 'ninguno') return '';
+    const titulo2 = `<div style="${f};font-size:15px;font-weight:bold;color:${T.verdeTitulo};
+      padding-bottom:10px">¿Qué logran los colegios con JUMP Math?</div>`;
+
+    if (P.beneficios === 'lista') {
+      // Sin caja de color: filas con un punto de acento. Encaja con las
+      // plantillas sobrias, donde un panel verde desentonaría.
+      return `${titulo2}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${BENEFICIOS.map(([, txt]) => `<tr>
+            <td width="18" valign="top" style="${f};font-size:14px;line-height:1.6;
+              color:${T.verdeTitulo}">•</td>
+            <td style="${f};font-size:14px;line-height:1.6;color:${T.tinta};
+              padding-bottom:5px">${txt}</td></tr>`).join('')}
+        </table>`;
+    }
+    const celda = ([icono, txt]) => `
+      <td width="50%" valign="top" style="padding:7px 12px 7px 0">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+          <td width="40" valign="top" style="padding-top:1px">
+            <img src="${img(icono)}" width="30" alt="" style="display:block;border:0"></td>
+          <td valign="top" style="${f};font-size:13px;line-height:1.5;color:${T.verdeTexto}">${txt}</td>
+        </tr></table></td>`;
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+         style="background:${T.verdeFondo};border-radius:12px">
+      <tr><td colspan="2" style="padding:16px 18px 4px">${titulo2}</td></tr>
+      <tr><td colspan="2" style="padding:0 8px 0 18px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>${celda(BENEFICIOS[0])}${celda(BENEFICIOS[1])}</tr>
+          <tr>${celda(BENEFICIOS[2])}${celda(BENEFICIOS[3])}</tr>
+        </table></td></tr>
+      <tr><td colspan="2" style="font-size:0;height:14px">&nbsp;</td></tr>
+    </table>`;
+  }
 
   const chips = horarios.length ? `
     <table role="presentation" cellpadding="0" cellspacing="0"><tr>
       ${horarios.map((h) => {
     const [dia, ...resto] = h.split(/\s+/);
     return `<td style="padding:0 8px 0 0"><table role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td style="background:#eef2f8;border-radius:8px;padding:9px 14px;${f};font-size:13px;white-space:nowrap">
-          <img src="${img('ic-cal-chip')}" width="14" alt="" style="vertical-align:-2px;border:0">
-          &nbsp;<b style="color:${MARCA.navy}">${escaparHtml(dia)}</b>
-          &nbsp;<span style="color:#3d4c63">${escaparHtml(resto.join(' '))}</span>
+        <tr><td style="background:${T.chip};border-radius:8px;padding:9px 14px;${f};
+          font-size:13px;white-space:nowrap">
+          <b style="color:${T.titulo}">${escaparHtml(dia)}</b>
+          &nbsp;<span style="color:${T.chipTinta}">${escaparHtml(resto.join(' '))}</span>
         </td></tr></table></td>`;
   }).join('')}
     </tr></table>` : '';
-
-  /* Dos por fila, con el icono al costado del texto: a 600 px, cuatro
-     columnas dejan renglones de tres palabras y bordes desparejos. */
-  const BENEFICIOS = [
-    ['ic-grafico', 'Mejora significativa en los resultados SIMCE.'],
-    ['ic-personas', 'Menos brechas: más estudiantes comprendiendo.'],
-    ['ic-lista', 'Docentes con secuencias claras y fáciles de aplicar.'],
-    ['ic-diana', 'Progreso medible clase a clase.'],
-  ];
-  const celdaBeneficio = ([icono, txt]) => `
-    <td width="50%" valign="top" style="padding:7px 12px 7px 0">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-        <tr>
-          <td width="40" valign="top" style="padding-top:1px">
-            <img src="${img(icono)}" width="30" alt="" style="display:block;border:0"></td>
-          <td valign="top" style="${f};font-size:13px;line-height:1.5;color:#2c4a38">${txt}</td>
-        </tr>
-      </table>
-    </td>`;
-  const beneficios = `
-    <tr>${celdaBeneficio(BENEFICIOS[0])}${celdaBeneficio(BENEFICIOS[1])}</tr>
-    <tr>${celdaBeneficio(BENEFICIOS[2])}${celdaBeneficio(BENEFICIOS[3])}</tr>`;
 
   const botonWa = wa ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr><td align="center" style="background:#1faa4f;border-radius:10px">
         <a href="${enlace(wa)}" style="display:block;padding:15px 20px;${f};font-size:16px;
           font-weight:bold;color:#ffffff;text-decoration:none">
-          <img src="${img('ic-wa-blanco')}" width="20" alt="" style="vertical-align:-4px;border:0">
-          &nbsp;Agendar reunión de 30 minutos por WhatsApp&nbsp;&nbsp;&#8250;</a>
+          Agendar reunión de 30 minutos por WhatsApp&nbsp;&nbsp;&#8250;</a>
       </td></tr>
     </table>
-    <div style="${f};font-size:12.5px;color:#5a6b84;padding-top:9px" align="center">
+    <div style="${f};font-size:12.5px;color:${T.tinta2};padding-top:9px" align="center">
       o simplemente responda este correo — contesto personalmente.</div>` : `
-    <div style="${f};font-size:14px;color:#333333;padding:2px 0 6px">
+    <div style="${f};font-size:14px;color:${T.tinta};padding:2px 0 6px">
       Responda este correo y coordinamos una reunión de 30 minutos — contesto personalmente.</div>`;
 
   const filaContacto = (icono, contenido) => `
-    <tr><td style="padding:0 0 9px;${f};font-size:13px">
-      <img src="${img(icono)}" width="16" alt="" style="vertical-align:-3px;border:0">
-      &nbsp;&nbsp;${contenido}</td></tr>`;
+    <tr><td style="padding:0 0 9px;${f};font-size:13px;color:${T.tinta2}">
+      ${icono}&nbsp;&nbsp;${contenido}</td></tr>`;
   const contactos = [
-    waVisible ? filaContacto('ic-wa',
-      `<a href="${enlace(wa)}" style="color:${MARCA.navy};text-decoration:none;font-weight:bold">${waVisible}</a>`) : '',
-    remitente ? filaContacto('ic-mail',
-      `<a href="mailto:${escaparHtml(remitente)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(remitente)}</a>`) : '',
-    sitio ? filaContacto('ic-globo',
-      `<a href="${enlace(sitio)}" style="color:${MARCA.navy};text-decoration:none">${escaparHtml(sitio.replace(/^https?:\/\//, ''))}</a>`) : '',
+    waVisible ? filaContacto('WhatsApp',
+      `<a href="${enlace(wa)}" style="color:${T.titulo};text-decoration:none;font-weight:bold">${waVisible}</a>`) : '',
+    remitente ? filaContacto('Correo',
+      `<a href="mailto:${escaparHtml(remitente)}" style="color:${T.titulo};text-decoration:none">${escaparHtml(remitente)}</a>`) : '',
+    sitio ? filaContacto('Sitio',
+      `<a href="${enlace(sitio)}" style="color:${T.titulo};text-decoration:none">${escaparHtml(sitio.replace(/^https?:\/\//, ''))}</a>`) : '',
   ].filter(Boolean).join('');
+
+  const firma = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td valign="top" style="${f}">
+        <img src="${base}${T.firma}" width="196" alt="${escaparHtml(MARCA.firmante)}"
+             style="display:block;border:0;max-width:196px">
+        <div style="font-size:15px;font-weight:bold;color:${T.titulo};padding-top:10px">
+          ${escaparHtml(MARCA.firmante)}</div>
+        <div style="font-size:13px;color:${T.tinta2};padding-top:2px">${escaparHtml(MARCA.cargo)}</div>
+      </td>
+      <td width="222" valign="top" style="padding-left:20px;border-left:1px solid ${T.linea}">
+        <table role="presentation" cellpadding="0" cellspacing="0">${contactos}</table>
+      </td>
+    </tr></table>`;
+
+  const pie = `<table role="presentation" width="600" cellpadding="0" cellspacing="0"
+      style="max-width:600px;width:100%">
+    <tr><td align="center" style="padding:16px 24px;${f};font-size:11px;line-height:1.6;color:${T.tinta3}">
+      <b style="color:${T.tinta2}">${escaparHtml(MARCA.identidad)}</b><br>
+      Le escribimos porque ${colegio || 'su establecimiento'} figura en el directorio público
+      de establecimientos de MINEDUC.<br>
+      Si prefiere no recibir más información, responda este correo con la palabra BAJA${bajaUrl
+  ? ` o <a href="${bajaUrl}" style="color:${T.tinta3}">use este enlace</a>` : ''}.
+    </td></tr></table>`;
 
   const cabezaHtml = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>`;
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="${ctx?.tema === 'oscuro' ? 'dark' : 'light'}"></head>`;
 
-  /* Un seguimiento va dentro del hilo del primer correo: quien lo abre ya
-     vio la lámina completa. Repetirla se lee como ruido publicitario, así
-     que el recordatorio es corto y sólo repone lo accionable —horarios y
-     botón— con la firma para que se reconozca de quién viene. */
-  if (breve) {
-    return `${cabezaHtml}
-<body style="margin:0;padding:0;background:${MARCA.fondo}">
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
-  ${gancho} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
-</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
-  <tr><td align="center" style="padding:22px 12px">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0"
-           style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden">
-      <tr><td style="height:4px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
-      <tr><td style="${M};padding-top:22px;${f};font-size:15px;line-height:1.65;color:#333333">
-        ${cuerpo}
-      </td></tr>
-      ${chips ? `<tr><td style="${M};padding-top:16px">${chips}</td></tr>` : ''}
-      <tr><td style="${M};padding-top:18px">${botonWa}</td></tr>
-      <tr><td style="${M};padding-top:20px">
-        <div style="border-top:1px solid #e6e9ef;font-size:0">&nbsp;</div>
-      </td></tr>
-      <tr><td style="${M};padding-top:12px;padding-bottom:24px;${f}">
-        <img src="${base}${MARCA.firma}" width="150" alt="${escaparHtml(MARCA.firmante)}"
-             style="display:block;border:0;max-width:150px">
-        <div style="font-size:14px;font-weight:bold;color:${MARCA.navy};padding-top:8px">
-          ${escaparHtml(MARCA.firmante)}</div>
-        <div style="font-size:12.5px;color:#5a6b84;padding-top:2px">${escaparHtml(MARCA.cargo)}</div>
-      </td></tr>
-    </table>
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-      <tr><td align="center" style="padding:14px 24px;${f};font-size:11px;line-height:1.6;color:#8a93a3">
-        ${escaparHtml(MARCA.identidad)} &nbsp;·&nbsp; Responda con la palabra BAJA${bajaUrl
-      ? ` o <a href="${bajaUrl}" style="color:#8a93a3">use este enlace</a>` : ''}
-        para no recibir más correos.
-      </td></tr>
-    </table>
-  </td></tr>
-</table>${pixel}</body></html>`;
-  }
-
-  return `${cabezaHtml}
-<body style="margin:0;padding:0;background:${MARCA.fondo}">
-<!-- Gmail muestra este texto junto al asunto en la bandeja. Repetir el
-     titular desperdicia la única línea gratis que hay para dar el dato
-     concreto que abre el correo. -->
+  const envolver = (interior) => `${cabezaHtml}
+<body style="margin:0;padding:0;background:${T.fondo}">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
   ${gancho} &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
 </div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MARCA.fondo}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${T.fondo}">
   <tr><td align="center" style="padding:26px 12px">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0"
-           style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden">
-      <tr><td style="height:5px;background:${MARCA.rojo};font-size:0">&nbsp;</td></tr>
-
-      <tr><td style="${M};padding-top:24px;padding-bottom:16px">
-        <img src="${base}${MARCA.logo}" width="164" alt="JUMP Math Chile"
-             style="display:block;border:0;max-width:164px">
-      </td></tr>
-
-      <!-- El nombre del colegio ocupa el ancho completo: es lo primero
-           que el director reconoce y no debe partirse contra la imagen. -->
-      <tr><td style="${M};padding-bottom:2px;${f};font-size:12px;font-weight:bold;
-        letter-spacing:.08em;text-transform:uppercase;color:${MARCA.rojo}">${colegio}${comuna
-    ? `<span style="color:#98a2b3;font-weight:normal">&nbsp;&nbsp;·&nbsp;&nbsp;${comuna}</span>` : ''}</td></tr>
-
-      <tr><td style="${M};padding-top:6px;padding-bottom:6px">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td valign="middle" style="${f};font-size:24px;line-height:1.3;color:${MARCA.navy}">
-              <b>Una oportunidad concreta</b> para seguir mejorando en
-              <b>Matemática 4º básico.</b>
-            </td>
-            <td width="180" valign="middle" align="right">
-              <img src="${img('ilustracion')}" width="172" alt=""
-                   style="display:block;border:0;max-width:172px">
-            </td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <tr><td style="${M};padding-top:8px;padding-bottom:14px;${f};font-size:15px;color:#333333">
-        Estimado equipo directivo:
-      </td></tr>
-
-      ${tarjetaSimce ? `<tr><td style="${M};padding-bottom:18px">${tarjetaSimce}</td></tr>` : ''}
-
-      <tr><td style="${M};padding-bottom:6px;${f}">
-        <div style="font-size:17px;font-weight:bold;color:${MARCA.navy};padding-bottom:8px">
-          ¿Qué es JUMP Math?</div>
-        <div style="font-size:14.5px;line-height:1.65;color:#333333">${cuerpo}</div>
-        ${evidencia ? `<div style="font-size:14px;padding-top:10px">
-          <a href="${enlace(evidencia)}" style="color:${MARCA.rojo};font-weight:bold;text-decoration:none">
-            Ver la evidencia en 2 minutos&nbsp;&#8250;</a></div>` : ''}
-      </td></tr>
-
-      <tr><td style="${M};padding-top:14px;padding-bottom:4px">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-               style="background:#f4f6f9;border-radius:999px">
-          <tr><td align="center" style="padding:9px 18px;${f};font-size:12px;color:#5a6b84">
-            <img src="${img('ic-globo')}" width="15" alt="" style="vertical-align:-3px;border:0">
-            &nbsp;Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
-            &nbsp;·&nbsp; Canadá, EE.&nbsp;UU. y España</td></tr>
-        </table>
-      </td></tr>
-
-      <tr><td style="${M};padding-top:16px">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-               style="background:#eef7f0;border-radius:12px">
-          <tr><td colspan="2" style="padding:16px 18px 4px;${f};font-size:15px;
-            font-weight:bold;color:#1e6b40">¿Qué logran los colegios con JUMP Math?</td></tr>
-          <tr><td colspan="2" style="padding:0 8px 0 18px">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              ${beneficios}
-            </table>
-          </td></tr>
-          <tr><td colspan="2" style="font-size:0;height:14px">&nbsp;</td></tr>
-        </table>
-      </td></tr>
-
-      <!-- El icono acompaña al título; el párrafo, los horarios y el botón
-           arrancan todos en el mismo margen, así la vista baja en línea
-           recta hasta el CTA. -->
-      <tr><td style="${M};padding-top:24px">
-        <table role="presentation" cellpadding="0" cellspacing="0">
-          <tr>
-            <td width="52" valign="middle">
-              <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-                <td width="44" height="44" align="center" valign="middle"
-                    style="background:#eaf0f8;border-radius:50%">
-                  <img src="${img('ic-cal-navy')}" width="24" alt="" style="border:0;vertical-align:middle">
-                </td></tr></table>
-            </td>
-            <td valign="middle" style="${f};font-size:16.5px;font-weight:bold;color:${MARCA.navy}">
-              ¿Revisamos juntos cómo funciona${comuna ? ` en ${comuna}` : ''}?</td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <tr><td style="${M};padding-top:9px;${f};font-size:14px;line-height:1.6;color:#333333">
-        Podemos reunirnos 30 minutos para mostrarles cómo implementarlo
-        y los resultados que han obtenido otros colegios.</td></tr>
-
-      ${chips ? `<tr><td style="${M};padding-top:14px">${chips}</td></tr>` : ''}
-
-      <tr><td style="${M};padding-top:18px">${botonWa}</td></tr>
-
-      <tr><td style="${M};padding-top:18px">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-               style="background:#fdefee;border-radius:10px">
-          <tr>
-            <td width="54" align="center" valign="middle" style="padding:14px 0 14px 14px">
-              <img src="${img('ic-cal-rojo')}" width="28" alt="" style="border:0;display:block"></td>
-            <td valign="middle" style="padding:14px 18px 14px 8px;${f};font-size:13px;
-              line-height:1.55;color:#333333">
-              Los programas que comienzan con el <b style="color:${MARCA.rojo}">año escolar 2027</b>
-              se están definiendo durante estas semanas, por lo que este es un buen momento
-              para evaluarlo.</td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <tr><td style="${M};padding-top:22px">
-        <div style="border-top:1px solid #e6e9ef;font-size:0">&nbsp;</div>
-      </td></tr>
-
-      <tr><td style="${M};padding-top:14px;padding-bottom:28px">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td valign="top" style="${f}">
-              <img src="${base}${MARCA.firma}" width="196" alt="${escaparHtml(MARCA.firmante)}"
-                   style="display:block;border:0;max-width:196px">
-              <div style="font-size:15px;font-weight:bold;color:${MARCA.navy};padding-top:10px">
-                ${escaparHtml(MARCA.firmante)}</div>
-              <div style="font-size:13px;color:#5a6b84;padding-top:2px">${escaparHtml(MARCA.cargo)}</div>
-            </td>
-            <td width="222" valign="top" style="padding-left:20px;border-left:1px solid #e6e9ef">
-              <table role="presentation" cellpadding="0" cellspacing="0">${contactos}</table>
-            </td>
-          </tr>
-        </table>
-      </td></tr>
+           style="max-width:600px;width:100%;background:${T.tarjeta};border-radius:14px;overflow:hidden">
+      <tr><td style="height:5px;background:${T.acento};font-size:0">&nbsp;</td></tr>
+      ${interior}
     </table>
-
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-      <tr><td align="center" style="padding:16px 24px;${f};font-size:11px;line-height:1.6;color:#8a93a3">
-        <b style="color:#6b7480">${escaparHtml(MARCA.identidad)}</b><br>
-        Le escribimos porque ${colegio || 'su establecimiento'} figura en el directorio público
-        de establecimientos de MINEDUC.<br>
-        Si prefiere no recibir más información, responda este correo con la palabra BAJA${bajaUrl
-    ? ` o <a href="${bajaUrl}" style="color:#8a93a3">use este enlace</a>` : ''}.
-      </td></tr>
-    </table>
+    ${pie}
   </td></tr>
 </table>${pixel}</body></html>`;
+
+  /* Un seguimiento va dentro del hilo del primer correo: quien lo abre ya
+     vio la lámina completa. Repetirla se lee como ruido publicitario, así
+     que el recordatorio es corto y sólo repone lo accionable. */
+  if (breve) {
+    return envolver(`
+      ${fila(`<div style="${f};font-size:15px;line-height:1.65;color:${T.tinta}">${cuerpo}</div>`, 22)}
+      ${chips ? fila(chips, 16) : ''}
+      ${fila(botonWa, 18)}
+      ${fila(`<div style="border-top:1px solid ${T.linea};font-size:0">&nbsp;</div>`, 20)}
+      ${fila(firma, 12, 24)}`);
+  }
+
+  const bloques = [];
+  bloques.push(fila(logo(P.cifras === 'linea' && P.beneficios === 'ninguno' ? 150 : 190), 24, 16));
+
+  if (P.cifras === 'banda') bloques.push(fila(bloqueCifras(), 0, 20));
+
+  bloques.push(fila(kicker, 0, 2));
+  if (P.ilustracion) {
+    bloques.push(fila(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td valign="middle">${titular}</td>
+      <td width="180" valign="middle" align="right">
+        <img src="${img('ilustracion')}" width="172" alt=""
+             style="display:block;border:0;max-width:172px"></td></tr></table>`, 6, 6));
+  } else if (P.cifras !== 'banda') {
+    bloques.push(fila(titular, 6, 6));
+  }
+
+  bloques.push(fila(`<div style="${f};font-size:15px;color:${T.tinta}">Estimado equipo directivo:</div>`, 8, 14));
+
+  if (P.cifras !== 'banda') {
+    const c = bloqueCifras();
+    if (c) bloques.push(fila(c, 0, 18));
+  }
+
+  bloques.push(fila(`<div style="${f}">
+    ${P.beneficios === 'ninguno' ? '' : `<div style="font-size:17px;font-weight:bold;
+      color:${T.titulo};padding-bottom:8px">¿Qué es JUMP Math?</div>`}
+    <div style="font-size:14.5px;line-height:1.65;color:${T.tinta}">${cuerpo}</div>
+    ${evidencia ? `<div style="font-size:14px;padding-top:10px">
+      <a href="${enlace(evidencia)}" style="color:${T.acento};font-weight:bold;text-decoration:none">
+        Ver la evidencia en 2 minutos&nbsp;&#8250;</a></div>` : ''}
+  </div>`, 0, 6));
+
+  if (P.prueba) {
+    bloques.push(fila(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+        style="background:${T.pastilla};border-radius:999px">
+      <tr><td align="center" style="padding:9px 18px;${f};font-size:12px;color:${T.tinta2}">
+        Creado en Canadá &nbsp;·&nbsp; Ensayos controlados aleatorizados
+        &nbsp;·&nbsp; Canadá, EE.&nbsp;UU. y España</td></tr></table>`, 14, 4));
+  }
+
+  const ben = bloqueBeneficios();
+  if (ben) bloques.push(fila(ben, 16));
+
+  if (P.reunion) {
+    bloques.push(fila(`<div style="${f};font-size:16.5px;font-weight:bold;color:${T.titulo}">
+      ¿Revisamos juntos cómo funciona${comuna ? ` en ${comuna}` : ''}?</div>`, 24));
+    bloques.push(fila(`<div style="${f};font-size:14px;line-height:1.6;color:${T.tinta}">
+      Podemos reunirnos 30 minutos para mostrarles cómo implementarlo
+      y los resultados que han obtenido otros colegios.</div>`, 9));
+    if (chips) bloques.push(fila(chips, 14));
+  }
+
+  bloques.push(fila(botonWa, 18));
+
+  if (P.urgencia) {
+    bloques.push(fila(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+        style="background:${T.urgencia};border-radius:10px">
+      <tr><td style="padding:14px 18px;${f};font-size:13px;line-height:1.55;color:${T.tinta}">
+        Los programas que comienzan con el <b style="color:${T.acento}">año escolar 2027</b>
+        se están definiendo durante estas semanas, por lo que este es un buen momento
+        para evaluarlo.</td></tr></table>`, 18));
+  }
+
+  bloques.push(fila(`<div style="border-top:1px solid ${T.linea};font-size:0">&nbsp;</div>`, 22));
+  bloques.push(fila(firma, 14, 28));
+  return envolver(bloques.join(''));
 }
 
 /** RFC 2822 en base64url, que es lo que espera la API de Gmail. */
@@ -628,6 +678,8 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
     cuerpoB: campana.cuerpoB || '',
     seguimientoDe: campana.seguimientoDe || '',
     evidencia: Boolean(campana.evidencia),
+    plantilla: campana.plantilla || 'lamina',
+    tema: campana.tema || 'claro',
     segmento: campana.segmento || {},
     track: Boolean(campana.track),
     estado: campana.estado || 'borrador',
