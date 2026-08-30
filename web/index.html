@@ -166,10 +166,15 @@
           <button type="button" class="ayuda" data-ayuda="f-correo" aria-label="Qué significa">?</button>
         </span>
         <span class="campo-filtro oculto" id="caja-umbral">
+          <!-- "60+" incluye a los críticos a propósito: son los que más
+               duelen. Los tramos cerrados están para trabajar la base por
+               oleadas, cuando a los de arriba ya se les escribió. -->
           <select id="f-umbral">
-            <option value="60">Dolor 60+ (bajo el promedio)</option>
-            <option value="85">Dolor 85+ (crítico)</option>
-            <option value="35">Dolor 35+ (amplio)</option>
+            <option value="60">Dolor 60+ · con los críticos</option>
+            <option value="60-84">Dolor 60 a 84 · sin los críticos</option>
+            <option value="85">Dolor 85+ · sólo críticos</option>
+            <option value="35">Dolor 35+ · todo</option>
+            <option value="35-59">Dolor 35 a 59 · sólo el borde</option>
           </select>
           <button type="button" class="ayuda" data-ayuda="f-umbral" aria-label="Qué significa">?</button>
         </span>

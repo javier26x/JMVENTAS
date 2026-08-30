@@ -46,10 +46,15 @@ export const AYUDA = {
   'f-correo': ['Con o sin correo',
     'Sólo los que tienen dirección de correo pueden entrar en una campaña. '
     + 'Los "sin correo" son trabajo de teléfono o de búsqueda.'],
-  'f-umbral': ['Umbral de dolor',
-    'Corta la lista por el dolor mínimo en matemática. 85+ es la crisis '
-    + 'documentada; 60+ es todo lo que está bajo el promedio nacional; 35+ '
-    + 'abre la lista a los que apenas están en el promedio.'],
+  'f-umbral': ['Dolor en matemática',
+    'Las opciones con "+" son acumulativas: "60+" incluye a los críticos, '
+    + 'porque quien busca dolor quiere ver primero el peor. Las de tramo '
+    + 'cerrado ("60 a 84") dejan fuera lo de arriba, y sirven para trabajar la '
+    + 'base por oleadas cuando a los críticos ya se les escribió. 85+ es la '
+    + 'crisis documentada; 60+ es todo lo que está bajo el promedio nacional; '
+    + '35+ abre la lista a los que apenas lo alcanzan. '
+    + 'Este filtro necesita el cruce con SIMCE cargado; mientras no lo esté, '
+    + 'la lista se ordena por puntaje de prospección y el umbral no se aplica.'],
   'f-orden': ['Orden',
     'Por cuál columna se ordena la lista. En Oportunidades el orden es fijo: '
     + 'siempre por índice de oportunidad.'],

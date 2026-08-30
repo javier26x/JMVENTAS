@@ -248,6 +248,16 @@ function condicionMulti(ids) {
   return null;
 }
 
+/* El selector de dolor admite dos formas: "60" es desde 60 en adelante y
+   "60-84" es sólo ese tramo. La primera es la natural —quien busca dolor
+   quiere el peor primero—; la segunda existe porque al trabajar por
+   oleadas uno ya le escribió a los de arriba. */
+function tramoDolor() {
+  const v = String($('f-umbral').value || '60');
+  const [a, b] = v.split('-').map(Number);
+  return [Number.isFinite(a) ? a : 60, Number.isFinite(b) ? b : null];
+}
+
 function consultaProspectos(desde) {
   const partes = [collection(db, 'prospectos')];
 
@@ -264,7 +274,11 @@ function consultaProspectos(desde) {
       if (cond) partes.push(cond);
       partes.push(orderBy('puntaje', 'desc'));
     } else {
-      partes.push(where('dolorMate', '>=', Number($('f-umbral').value) || 60));
+      const [desdeDolor, hastaDolor] = tramoDolor();
+      partes.push(where('dolorMate', '>=', desdeDolor));
+      // Un tramo cerrado deja fuera lo de arriba: sirve para trabajar la
+      // base por oleadas sin repetir a quien ya entró en la anterior.
+      if (hastaDolor !== null) partes.push(where('dolorMate', '<=', hastaDolor));
       if (cond) partes.push(cond);
       partes.push(orderBy('dolorMate', 'desc'));
     }
@@ -1181,7 +1195,10 @@ function descripcionSegmento() {
   lista('f-region', (v) => v);
   if ($('f-ate').value) p.push($('f-ate').value === 'no' ? 'sin ATE' : 'requiere ATE');
   lista('f-estado', (v) => ETIQUETA_ESTADO[v] || v);
-  if (estado.vista === 'oportunidades') p.push(`dolor ${$('f-umbral').value}+`);
+  if (estado.vista === 'oportunidades') {
+    const [a, b] = tramoDolor();
+    p.push(b === null ? `dolor ${a}+` : `dolor ${a} a ${b}`);
+  }
   return p.length ? p.join(' · ') : 'Todos los prospectos cargados';
 }
 
