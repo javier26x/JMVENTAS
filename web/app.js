@@ -2108,13 +2108,31 @@ $('cuerpo-campanas').addEventListener('click', (e) => {
 
 async function conectar(leer) {
   try {
-    const r = await mail.conectarGmail(auth, { leer });
+    // Si el permiso ya está guardado en el servidor no hay nada que
+    // preguntarle a Google: pedir consentimiento otra vez sería hacerle
+    // repetir un trámite que ya hizo.
+    const r = await mail.conectarPorServidor(auth)
+      .catch(() => mail.conectarGmail(auth, { leer }));
     pintarEstadoGmail(r.correo, r.leer);
     limpiarError();
   } catch (e) { mostrarError(e); }
 }
 $('conectar-gmail').addEventListener('click', () => conectar(true));
 $('conectar-solo-envio').addEventListener('click', () => conectar(false));
+
+/* Conectar solo al abrir la app. Sin esto, el permiso guardado seguiría
+   ahí pero habría que pulsar un botón para usarlo, que es justo la
+   molestia que se quería quitar. */
+async function conectarSolo() {
+  if (!estado.programado?.autorizacion) return;
+  try {
+    const r = await mail.conectarPorServidor(auth);
+    pintarEstadoGmail(r.correo, r.leer);
+  } catch { /* el camino largo sigue disponible en el botón */ }
+}
+
+// Y renovar el token en silencio cuando venza a mitad de faena.
+mail.alRenovarToken(() => mail.conectarPorServidor(auth));
 
 /* La casilla de aperturas sólo sirve si la función está desplegada.
    Preguntar por ella evita una opción que promete algo que no ocurre. */
@@ -2377,8 +2395,13 @@ function pintarEstadoGmail(correo, conLectura) {
      de un colegio decide en dos segundos si el remitente es una
      institución o alguien escribiendo desde su cuenta personal. */
   const personal = /@gmail\.com$/i.test(correo);
+  const guardado = Boolean(estado.programado?.autorizacion);
   caja.innerHTML = `<div><strong>Gmail conectado:</strong> ${esc(correo)}.
-    Los correos saldrán desde esta cuenta. La sesión dura una hora.`
+    Los correos saldrán desde esta cuenta.`
+    + (guardado
+      ? ' La conexión se renueva sola: no hay que volver a pasar por Google '
+        + 'cada hora ni al abrir la app.'
+      : ' La sesión dura una hora.')
     + (conLectura
       ? ' Se detectarán respuestas y rebotes automáticamente.'
       : ' <em>Sin permiso de lectura: las respuestas habrá que revisarlas '
@@ -2701,7 +2724,8 @@ onAuthStateChanged(auth, async (u) => {
     await cargarProspectos();
     poblarFiltros();
     await pintarCampanas();
-    comprobarSeguimiento();
+    await comprobarSeguimiento();
+    conectarSolo();
     contarHoy();
   } catch (e) {
     $('cargando').classList.add('oculto');

@@ -114,10 +114,21 @@ despliegue; hay que tener los dos valores a mano.
 
 **Lo que hay que saber.**
 
+- **Autorizar una vez sirve para todo.** Desde que el permiso está guardado, la
+  app se conecta sola a Gmail al abrirse y renueva el token cuando vence: no hay
+  que pasar por la pantalla de Google cada hora ni pulsar *Conectar Gmail*. El
+  mismo permiso alimenta el envío manual, la detección de respuestas y el envío
+  programado.
 - **El permiso caduca a los siete días** mientras la aplicación no esté
   verificada por Google. La app avisa cuando está por vencer; basta con volver a
   pulsar *Autorizar*. Con el dominio propio en Workspace (ver Pendientes) el
   cliente OAuth pasa a *Interno* y deja de caducar.
+- **Verificar la app con Google no es el camino.** Para `gmail.send` pide
+  dominio verificado, política de privacidad, video de demostración y unas
+  semanas de revisión; para `gmail.readonly`, que es un permiso *restringido*,
+  además exige una auditoría de seguridad anual de terceros que cuesta miles de
+  dólares. Con Workspace y el cliente en *Interno* se consigue lo mismo —sin
+  pantalla de advertencia y sin caducidad— y gratis.
 - El permiso se guarda en la colección `secretos`, que las reglas niegan a todo
   cliente: sólo lo alcanzan las funciones. Se retira desde la misma tarjeta, y
   al retirarlo las campañas que esperaban vuelven a borrador.

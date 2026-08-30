@@ -191,8 +191,10 @@ export const AYUDA = {
   // ---------- campañas ----------
   'conectar-gmail': ['Conectar Gmail',
     'Autoriza a la app a enviar desde tu cuenta y a leer los hilos para '
-    + 'detectar respuestas y rebotes. El permiso vive sólo en memoria y dura '
-    + 'una hora.'],
+    + 'detectar respuestas y rebotes. Si ya autorizaste el envío automático, '
+    + 'esto no vuelve a preguntarle nada a Google: la app pide el permiso al '
+    + 'servidor y se conecta sola al abrirse. Si no, el permiso vive sólo en '
+    + 'memoria y dura una hora.'],
   'conectar-solo-envio': ['Conectar sólo para enviar',
     'Pide únicamente el permiso de envío, que Google clasifica como sensible '
     + 'y no como restringido. Se puede enviar, pero las respuestas hay que '

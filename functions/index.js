@@ -521,6 +521,53 @@ exports.seguimiento = onRequest({
       return;
     }
 
+    /* Un token de Gmail para la aplicación, sacado del permiso que ya
+       está guardado. Es lo que evita que haya que pasar por la pantalla
+       de Google cada vez que se abre la app o cada vez que pasa una
+       hora: el permiso se concede una vez y desde entonces el servidor
+       reparte tokens frescos a quien tenga sesión y derecho.
+
+       El derecho no es "estar autenticado": eso permitiría a cualquiera
+       con una cuenta de Google mandar correo firmando como otro. Sólo
+       pasan quien concedió el permiso y el dueño de la casilla. */
+    if (/^\/t\/token/.test(ruta)) {
+      if (req.method !== 'POST') { res.status(405).end(); return; }
+      try {
+        const cabecera = String(req.get('Authorization') || '');
+        const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
+        if (!idToken) { res.status(401).json({ error: 'sin sesión' }); return; }
+        const usuario = await getAuth().verifyIdToken(idToken);
+        const snap = await db.doc('secretos/gmail').get();
+        if (!snap.exists) { res.status(404).json({ error: 'sin autorización guardada' }); return; }
+
+        const suyo = usuario.uid === snap.get('autorizadoPor');
+        const propia = String(usuario.email || '').toLowerCase()
+          === String(snap.get('correo') || '').toLowerCase();
+        if (!suyo && !propia) {
+          res.status(403).json({ error: 'esta cuenta no puede enviar por el servidor' });
+          return;
+        }
+
+        const t = await pedirToken({
+          refresh_token: snap.get('refreshToken'), grant_type: 'refresh_token',
+        });
+        res.set('Cache-Control', 'no-store, max-age=0');
+        res.json({
+          token: t.access_token,
+          expira: Date.now() + ((Number(t.expires_in) || 3600) - 60) * 1000,
+          permisos: String(snap.get('permisos') || ''),
+          correo: snap.get('correo') || '',
+        });
+      } catch (e) {
+        // invalid_grant es el permiso caducado o revocado; conviene que
+        // la app lo distinga de un fallo pasajero para pedir uno nuevo.
+        const msg = String(e.message);
+        res.status(/invalid_grant|expired|revoked/i.test(msg) ? 401 : 400)
+          .json({ error: msg.slice(0, 200) });
+      }
+      return;
+    }
+
     /* Retira el permiso duradero. Tiene que ser tan fácil como darlo:
        un permiso para enviar correo en nombre de alguien que sólo se
        puede quitar entrando a la consola de Google es un permiso que

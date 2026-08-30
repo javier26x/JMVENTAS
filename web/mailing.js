@@ -99,6 +99,37 @@ export async function conectarGmail(auth, { leer = true } = {}) {
   return { correo: sesion.correo, leer: puedeLeer() };
 }
 
+/**
+ * Conecta Gmail sin pantalla de Google, con el permiso que ya está
+ * guardado en el servidor.
+ *
+ * Es lo que convierte tres consentimientos en uno: se autoriza una vez
+ * y desde entonces la app pide tokens al servidor al abrirse y cada vez
+ * que el anterior caduca. Falla en silencio a propósito —devuelve el
+ * error y la app ofrece el camino largo— porque no tener permiso
+ * guardado es un estado normal, no una avería.
+ */
+export async function conectarPorServidor(auth) {
+  if (!auth.currentUser) throw new Error('sin sesión iniciada');
+  const idToken = await auth.currentUser.getIdToken();
+  const r = await fetch('/t/token', {
+    method: 'POST', headers: { Authorization: `Bearer ${idToken}` },
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+
+  sesion.token = j.token;
+  sesion.correo = j.correo;
+  // Nunca más allá de lo que dijo Google, ni más de una hora.
+  sesion.expira = Math.min(Number(j.expira) || 0, Date.now() + 59 * 60 * 1000);
+  sesion.permisos = String(j.permisos || '').split(/\s+/).filter(Boolean);
+  if (!puedeEnviar()) {
+    sesion.token = null;
+    throw new Error('El permiso guardado no incluye el envío de correo.');
+  }
+  return { correo: sesion.correo, leer: puedeLeer() };
+}
+
 async function permisosDelToken(token) {
   try {
     const r = await fetch(
@@ -110,7 +141,19 @@ async function permisosDelToken(token) {
   }
 }
 
+/* Cómo volver a tener token sin molestar a nadie. La app la registra al
+   arrancar; si no hay permiso guardado en el servidor, queda en nulo y
+   todo sigue como antes, pidiendo la pantalla de Google. */
+let renovar = null;
+export const alRenovarToken = (fn) => { renovar = fn; };
+
 async function gmail(ruta, opciones = {}) {
+  /* Un token dura una hora. Antes eso significaba que dejar la pestaña
+     abierta durante el almuerzo obligaba a reconectarse a mano; ahora se
+     renueva solo contra el servidor y el envío ni se entera. */
+  if (!gmailConectado() && renovar) {
+    await renovar().catch(() => { /* si falla, cae en el error de abajo */ });
+  }
   if (!gmailConectado()) {
     throw new Error('La sesión de Gmail expiró. Vuelve a conectarla.');
   }
