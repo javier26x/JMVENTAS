@@ -217,6 +217,22 @@ async function pedirToken(cuerpo) {
    puede pedir alguien con sesión iniciada en la app, y queda registrado
    quién autorizó: es un permiso para enviar correo en nombre de una
    persona, no un detalle de configuración. */
+/* Los dominios donde vive la app. Detrás del rewrite de Hosting la
+   petición llega a Cloud Run con `host` puesto en el servicio interno
+   (…​.a.run.app), no en el sitio: comparar contra él rechazaría siempre
+   la autorización. El dominio original viaja en x-forwarded-host, y los
+   dos de Firebase se derivan del proyecto para no escribirlos a mano. */
+const PROYECTO = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '';
+const HOSTS_APP = new Set([`${PROYECTO}.web.app`, `${PROYECTO}.firebaseapp.com`]);
+
+function destinoValido(destino, req) {
+  let url;
+  try { url = new URL(destino); } catch { return false; }
+  if (url.protocol !== 'https:' || url.pathname !== '/oauth.html') return false;
+  const propio = String(req.get('x-forwarded-host') || req.get('host') || '');
+  return HOSTS_APP.has(url.host) || url.host === propio;
+}
+
 async function guardarAutorizacion(code, redirectUri, uid, correo) {
   /* Google exige que el canje repita el mismo redirect_uri con el que se
      pidió el consentimiento, así que viene del navegador; pero se acepta
@@ -488,8 +504,11 @@ exports.seguimiento = onRequest({
         const code = String(req.body?.code || '');
         if (!code) { res.status(400).json({ error: 'sin código' }); return; }
         const destino = String(req.body?.redirectUri || '');
-        const esperado = `https://${req.get('host')}/oauth.html`;
-        if (destino !== esperado) {
+        if (!destinoValido(destino, req)) {
+          // El detalle va al registro y no a la respuesta: al usuario no
+          // le sirve, y a quien husmee tampoco hay que contárselo.
+          console.error('autorizar: destino rechazado', destino,
+            'host', req.get('host'), 'reenviado', req.get('x-forwarded-host'));
           res.status(400).json({ error: 'destino de autorización no válido' });
           return;
         }
