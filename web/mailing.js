@@ -820,14 +820,34 @@ export async function listarDestinatarios(db, campanaId, soloPendientes = false)
   return s.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+/**
+ * Borra una campaña y todos sus destinatarios.
+ *
+ * Lo primero es sacarla de la cola del servidor. Borrar los
+ * destinatarios de una campaña programada sin cambiarle antes el estado
+ * deja una ventana —de segundos, pero real— en la que el reloj puede
+ * recogerla y despachar justo lo que se está eliminando; y un correo
+ * enviado no se puede deshacer.
+ */
 export async function borrarCampana(db, id) {
-  const dest = await listarDestinatarios(db, id);
-  for (let i = 0; i < dest.length; i += 450) {
-    const b = writeBatch(db);
-    for (const d of dest.slice(i, i + 450)) {
-      b.delete(doc(db, 'campanas', id, 'destinatarios', d.id));
+  await updateDoc(doc(db, 'campanas', id), {
+    estado: 'borrando',
+    programadaPara: deleteField(),
+  }).catch(() => { /* si ya no existe, no hay nada que sacar de la cola */ });
+
+  /* En vueltas, porque una consulta trae como mucho 2.000 y una campaña
+     puede tener más. El tope de vueltas está para que un borrado que no
+     avanza termine en error y no en un bucle infinito. */
+  for (let vuelta = 0; vuelta < 20; vuelta += 1) {
+    const dest = await listarDestinatarios(db, id);
+    if (!dest.length) break;
+    for (let i = 0; i < dest.length; i += 450) {
+      const b = writeBatch(db);
+      for (const d of dest.slice(i, i + 450)) {
+        b.delete(doc(db, 'campanas', id, 'destinatarios', d.id));
+      }
+      await b.commit();
     }
-    await b.commit();
   }
   await deleteDoc(doc(db, 'campanas', id));
 }

@@ -806,6 +806,12 @@ th .ayuda { vertical-align: baseline; }
 }
 .env.malo { color: var(--critico); font-weight: 550; }
 
+/* Borrar no se pinta como una acción más: se ve al pasar por encima y
+   sólo entonces se tiñe de rojo, para que no compita con "Ver". */
+.acciones-fila { display: flex; gap: 6px; white-space: nowrap; }
+button.peligro { color: var(--tinta-apagada); }
+button.peligro:hover { color: var(--critico); border-color: var(--critico); }
+
 /* Secciones plegadas: el ajuste que se toca una vez no debe ocupar lo
    mismo que el que se mira siempre. */
 .tarjeta.plegable { padding: 0; }

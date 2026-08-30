@@ -1617,7 +1617,10 @@ async function pintarCampanas() {
       <td class="num">${numero(t.respuestas)}</td>
       <td class="num">${c.track ? numero(t.aperturas) : '—'}</td>
       <td>${fecha(c.creado)}</td>
-      <td><button data-abrir="${esc(c.id)}">Ver</button></td></tr>`;
+      <td class="acciones-fila">
+        <button data-abrir="${esc(c.id)}">Ver</button>
+        <button data-borrar="${esc(c.id)}" class="fantasma peligro"
+          title="Borrar la campaña">Borrar</button></td></tr>`;
   }).join('');
 }
 
@@ -2113,8 +2116,46 @@ $('cuerpo').addEventListener('change', async (e) => {
 
 $('cuerpo-campanas').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-abrir]');
-  if (b) abrirDetalle(b.dataset.abrir);
+  if (b) { abrirDetalle(b.dataset.abrir); return; }
+  const borrar = e.target.closest('button[data-borrar]');
+  if (borrar) borrarCampana(borrar.dataset.borrar);
 });
+
+/* Borrar dice cosas distintas según el estado, porque son cosas
+   distintas: una programada deja de salir, una enviada pierde el
+   registro de quién abrió, y un borrador no cuesta nada. Un único
+   "¿seguro?" para los tres invita a no leerlo. */
+async function borrarCampana(id) {
+  const c = estado.campanas.find((x) => x.id === id);
+  if (!c) return;
+  const t = c.totales || {};
+
+  let aviso;
+  if (c.estado === 'programada') {
+    aviso = `“${c.nombre}” está programada para ${cuandoSale(c.programadaPara)}.\n`
+      + `Al borrarla, esos ${numero(t.destinatarios) || ''} correos no saldrán.\n\n`
+      + 'Nadie ha recibido nada todavía, así que no queda rastro.';
+  } else if (t.enviados) {
+    aviso = `“${c.nombre}” ya envió ${numero(t.enviados)} correos.\n`
+      + 'Borrarla NO los recupera: los que llegaron, llegaron.\n\n'
+      + 'Lo que se pierde es el registro de aperturas, clics y respuestas '
+      + 'de esta campaña. La bitácora de cada colegio se conserva.';
+  } else {
+    aviso = `Se borrará el borrador “${c.nombre}”.\nNo se ha enviado ningún correo.`;
+  }
+  if (!confirm(`${aviso}\n\n¿Borrar la campaña?`)) return;
+
+  try {
+    await mail.borrarCampana(db, id);
+    avisar(`Campaña “${c.nombre}” borrada.`);
+    // Si estaba abierta en el detalle o el editor, ya no existe.
+    if (estado.campanaActual?.id === id) estado.campanaActual = null;
+    irA('campanas');
+    await pintarCampanas();
+  } catch (e) {
+    mostrarError(e);
+  }
+}
 
 async function conectar(leer) {
   try {
