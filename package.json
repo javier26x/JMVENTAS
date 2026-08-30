@@ -8,6 +8,6 @@
     "firebase": "^12.17.1"
   },
   "scripts": {
-    "verificar": "esbuild web/app.js --bundle=false --format=esm --outfile=/dev/null --log-level=error && esbuild web/mailing.js --bundle=false --format=esm --outfile=/dev/null --log-level=error && esbuild functions/index.js --bundle=false --outfile=/dev/null --log-level=error && echo sintaxis OK"
+    "verificar": "esbuild web/app.js --bundle=false --format=esm --outfile=/dev/null --log-level=error && esbuild web/mailing.js --bundle=false --format=esm --outfile=/dev/null --log-level=error && esbuild web/ayuda.js --bundle=false --format=esm --outfile=/dev/null --log-level=error && esbuild functions/index.js --bundle=false --outfile=/dev/null --log-level=error && echo sintaxis OK"
   }
 }

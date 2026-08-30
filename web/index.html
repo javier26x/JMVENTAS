@@ -77,17 +77,20 @@
       <section class="kpis" id="kpis-panel"></section>
       <div class="paneles">
         <div class="tarjeta grafico">
-          <h3>Pipeline comercial</h3>
+          <h3>Pipeline comercial
+            <button type="button" class="ayuda" data-ayuda="g-estado" aria-label="Qué significa">?</button></h3>
           <p class="sub">Estado de los 7.808, contado en el servidor.</p>
           <div id="g-estado" class="barras"></div>
         </div>
         <div class="tarjeta grafico">
-          <h3>Dolor en matemática</h3>
+          <h3>Dolor en matemática
+            <button type="button" class="ayuda" data-ayuda="g-dolor" aria-label="Qué significa">?</button></h3>
           <p class="sub">SIMCE 2025 · brecha contra el promedio de 253.</p>
           <div id="g-dolor" class="barras"></div>
         </div>
         <div class="tarjeta grafico">
-          <h3>Facilidad de cierre</h3>
+          <h3>Facilidad de cierre
+            <button type="button" class="ayuda" data-ayuda="g-tier" aria-label="Qué significa">?</button></h3>
           <p class="sub">Tier por fricción de compra.</p>
           <div id="g-tier" class="barras"></div>
         </div>
@@ -99,46 +102,76 @@
       <section class="kpis" id="kpis"></section>
 
       <section class="filtros" id="filtros">
-        <input type="search" id="buscar" placeholder="Buscar colegio o comuna…  (/)" autocomplete="off">
-        <select id="f-tier">
-          <option value="">Todos los tiers</option>
-          <option value="1">1 · Fácil</option>
-          <option value="2">2 · Medio</option>
-          <option value="3">3 · Difícil</option>
-        </select>
-        <select id="f-canal"><option value="">Todos los canales</option></select>
-        <select id="f-region"><option value="">Todas las regiones</option></select>
-        <select id="f-ate">
-          <option value="">ATE: indiferente</option>
-          <option value="no">Sin requisito ATE</option>
-          <option value="si">Requiere ATE</option>
-        </select>
-        <select id="f-estado">
-          <option value="">Todos los estados</option>
-          <option value="nuevo">Nuevo</option>
-          <option value="contacto_ok">Con contacto</option>
-          <option value="contactado">Contactado</option>
-          <option value="reunion">Reunión agendada</option>
-          <option value="propuesta">Propuesta enviada</option>
-          <option value="ganado">Ganado</option>
-          <option value="descartado">Descartado</option>
-        </select>
-        <select id="f-correo">
-          <option value="">Correo: todos</option>
-          <option value="si">Con correo</option>
-          <option value="no">Sin correo</option>
-        </select>
-        <select id="f-umbral" class="oculto">
-          <option value="60">Dolor 60+ (bajo el promedio)</option>
-          <option value="85">Dolor 85+ (crítico)</option>
-          <option value="35">Dolor 35+ (amplio)</option>
-        </select>
-        <select id="f-orden">
-          <option value="matBasica">Ordenar: matrícula</option>
-          <option value="dolorMate">Ordenar: dolor en matemática</option>
-          <option value="puntaje">Ordenar: facilidad de cierre</option>
-        </select>
-        <button class="fantasma oculto" id="limpiar-filtros">Limpiar filtros</button>
+        <span class="campo-filtro busca">
+          <input type="search" id="buscar" placeholder="Buscar colegio o comuna…  (/)" autocomplete="off">
+          <button type="button" class="ayuda" data-ayuda="buscar" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro">
+          <select id="f-tier">
+            <option value="">Todos los tiers</option>
+            <option value="1">1 · Fácil</option>
+            <option value="2">2 · Medio</option>
+            <option value="3">3 · Difícil</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-tier" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro">
+          <select id="f-canal"><option value="">Todos los canales</option></select>
+          <button type="button" class="ayuda" data-ayuda="f-canal" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro">
+          <select id="f-region"><option value="">Todas las regiones</option></select>
+          <button type="button" class="ayuda" data-ayuda="f-region" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro">
+          <select id="f-ate">
+            <option value="">ATE: indiferente</option>
+            <option value="no">Sin requisito ATE</option>
+            <option value="si">Requiere ATE</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-ate" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro">
+          <select id="f-estado">
+            <option value="">Todos los estados</option>
+            <option value="nuevo">Nuevo</option>
+            <option value="contacto_ok">Con contacto</option>
+            <option value="contactado">Contactado</option>
+            <option value="reunion">Reunión agendada</option>
+            <option value="propuesta">Propuesta enviada</option>
+            <option value="ganado">Ganado</option>
+            <option value="descartado">Descartado</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-estado" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro">
+          <select id="f-correo">
+            <option value="">Correo: todos</option>
+            <option value="si">Con correo</option>
+            <option value="no">Sin correo</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-correo" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro oculto" id="caja-umbral">
+          <select id="f-umbral">
+            <option value="60">Dolor 60+ (bajo el promedio)</option>
+            <option value="85">Dolor 85+ (crítico)</option>
+            <option value="35">Dolor 35+ (amplio)</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-umbral" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro" id="caja-orden">
+          <select id="f-orden">
+            <option value="matBasica">Ordenar: matrícula</option>
+            <option value="dolorMate">Ordenar: dolor en matemática</option>
+            <option value="puntaje">Ordenar: facilidad de cierre</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-orden" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro oculto" id="caja-limpiar">
+          <button class="fantasma" id="limpiar-filtros">Limpiar filtros</button>
+          <button type="button" class="ayuda" data-ayuda="limpiar-filtros" aria-label="Qué significa">?</button>
+        </span>
         <span class="resultado" id="resultado"></span>
       </section>
 
@@ -150,7 +183,9 @@
         <span id="sel-detalle" class="sub"></span>
         <div class="fila-botones">
           <button class="primario" id="sel-campana">Crear campaña con la selección</button>
+          <button type="button" class="ayuda" data-ayuda="sel-campana" aria-label="Qué significa">?</button>
           <button id="sel-copiar">Copiar correos</button>
+          <button type="button" class="ayuda" data-ayuda="sel-copiar" aria-label="Qué significa">?</button>
           <button class="fantasma" id="sel-limpiar">Quitar selección</button>
         </div>
       </div>
@@ -164,7 +199,12 @@
         <div id="vacio" class="vacio oculto">Sin resultados para estos filtros.</div>
       </div>
 
-      <div class="pie"><button id="mas" class="oculto">Cargar más</button></div>
+      <div class="pie">
+        <span class="campo-filtro oculto" id="caja-mas">
+          <button id="mas">Cargar más</button>
+          <button type="button" class="ayuda" data-ayuda="mas" aria-label="Qué significa">?</button>
+        </span>
+      </div>
     </section>
 
     <!-- ============ CAMPAÑAS ============ -->
@@ -177,17 +217,23 @@
         </div>
         <div class="fila-botones">
           <button class="primario" id="conectar-gmail">Conectar Gmail</button>
+          <button type="button" class="ayuda" data-ayuda="conectar-gmail" aria-label="Qué significa">?</button>
           <button class="fantasma" id="conectar-solo-envio">Solo enviar</button>
+          <button type="button" class="ayuda" data-ayuda="conectar-solo-envio" aria-label="Qué significa">?</button>
         </div>
       </div>
 
       <div class="envoltura">
         <table>
           <thead><tr>
-            <th>Campaña</th><th>Estado</th>
-            <th class="num">Destinatarios</th><th class="num">Enviados</th>
-            <th class="num">Respuestas</th><th class="num">Aperturas</th>
-            <th>Creada</th><th></th>
+            <th>Campaña<button type="button" class="ayuda" data-ayuda="col-campana" aria-label="Qué significa">?</button></th>
+            <th>Estado<button type="button" class="ayuda" data-ayuda="col-c-estado" aria-label="Qué significa">?</button></th>
+            <th class="num">Destinatarios<button type="button" class="ayuda" data-ayuda="col-c-destinatarios" aria-label="Qué significa">?</button></th>
+            <th class="num">Enviados<button type="button" class="ayuda" data-ayuda="col-c-enviados" aria-label="Qué significa">?</button></th>
+            <th class="num">Respuestas<button type="button" class="ayuda" data-ayuda="col-c-respuestas" aria-label="Qué significa">?</button></th>
+            <th class="num">Aperturas<button type="button" class="ayuda" data-ayuda="col-c-aperturas" aria-label="Qué significa">?</button></th>
+            <th>Creada<button type="button" class="ayuda" data-ayuda="col-c-creada" aria-label="Qué significa">?</button></th>
+            <th></th>
           </tr></thead>
           <tbody id="cuerpo-campanas"></tbody>
         </table>
@@ -201,21 +247,21 @@
     <section id="vista-editor" class="oculto">
       <div class="editor">
         <div class="editor-col">
-          <label>Nombre interno
+          <label>Nombre interno <button type="button" class="ayuda" data-ayuda="c-nombre" aria-label="Qué significa">?</button>
             <input type="text" id="c-nombre" placeholder="Tier 1 · dolor alto · agosto">
           </label>
 
-          <label>Asunto
+          <label>Asunto <button type="button" class="ayuda" data-ayuda="c-asunto" aria-label="Qué significa">?</button>
             <input type="text" id="c-asunto"
                    placeholder="Matemática en {{establecimiento}}: propuesta concreta para 2027">
           </label>
 
-          <label>Mensaje
+          <label>Mensaje <button type="button" class="ayuda" data-ayuda="c-cuerpo" aria-label="Qué significa">?</button>
             <textarea id="c-cuerpo" rows="16"></textarea>
           </label>
 
           <div class="variables">
-            Variables disponibles — haz clic para insertar:
+            Variables disponibles — haz clic para insertar: <button type="button" class="ayuda" data-ayuda="variables" aria-label="Qué significa">?</button>
             <div id="lista-variables"></div>
           </div>
         </div>
@@ -226,16 +272,17 @@
             <p class="sub" id="segmento-desc">—</p>
             <div class="fila-botones">
               <button id="c-recalcular">Recalcular desde los filtros actuales</button>
+              <button type="button" class="ayuda" data-ayuda="c-recalcular" aria-label="Qué significa">?</button>
             </div>
             <div id="segmento-resumen" class="resumen-segmento"></div>
-            <label class="linea-tanda">Correos en esta tanda
+            <label class="linea-tanda">Correos en esta tanda <button type="button" class="ayuda" data-ayuda="c-tanda" aria-label="Qué significa">?</button>
               <input type="number" id="c-tanda" min="1" max="450" step="5">
             </label>
             <p class="sub" id="tanda-nota"></p>
           </div>
 
           <div class="tarjeta">
-            <h3>Prueba A/B <span class="sub">opcional</span></h3>
+            <h3>Prueba A/B <span class="sub">opcional</span> <button type="button" class="ayuda" data-ayuda="c-asunto-b" aria-label="Qué significa">?</button></h3>
             <p class="sub">Si completas una variante, la mitad del segmento la recibe
               (uno sí, uno no). Compara los resultados en el detalle de la campaña.</p>
             <label>Asunto B
@@ -251,14 +298,14 @@
             <h3>Contacto en el correo</h3>
             <p class="sub">Aparecen como botón y en la firma. El WhatsApp llega
               con el nombre del colegio ya escrito en el mensaje.</p>
-            <label>WhatsApp
+            <label>WhatsApp <button type="button" class="ayuda" data-ayuda="c-whatsapp" aria-label="Qué significa">?</button>
               <input type="text" id="c-whatsapp" placeholder="+56 9 1234 5678" autocomplete="off">
             </label>
             <label>Sitio web (opcional)
               <input type="text" id="c-sitio" placeholder="https://jumpmath.cl" autocomplete="off">
             </label>
             <div class="campo-agenda">
-              <span class="etq-agenda">Horarios propuestos</span>
+              <span class="etq-agenda">Horarios propuestos</span> <button type="button" class="ayuda" data-ayuda="c-horarios" aria-label="Qué significa">?</button>
               <p class="sub">Elige hasta 3 bloques concretos: proponer día y
                 hora responde mucho mejor que “cuando usted pueda”.</p>
               <div class="agenda">
@@ -288,7 +335,7 @@
             <h3>Seguimiento</h3>
             <label class="check">
               <input type="checkbox" id="c-track-aperturas">
-              Registrar aperturas y clics
+              Registrar aperturas y clics <button type="button" class="ayuda" data-ayuda="c-track-aperturas" aria-label="Qué significa">?</button>
             </label>
             <p class="sub" id="track-aviso">
               Requiere desplegar la función de seguimiento y el plan Blaze.
@@ -296,7 +343,7 @@
             </p>
             <label class="check">
               <input type="checkbox" id="c-evidencia">
-              Enlazar la página de evidencia
+              Enlazar la página de evidencia <button type="button" class="ayuda" data-ayuda="c-evidencia" aria-label="Qué significa">?</button>
             </label>
             <p class="sub">
               Añade “Ver la evidencia en 2 minutos” bajo el texto.
@@ -307,8 +354,11 @@
 
           <div class="fila-botones">
             <button id="c-prueba">Enviarme una prueba</button>
+            <button type="button" class="ayuda" data-ayuda="c-prueba" aria-label="Qué significa">?</button>
             <button id="c-guardar">Guardar borrador</button>
+            <button type="button" class="ayuda" data-ayuda="c-guardar" aria-label="Qué significa">?</button>
             <button class="primario" id="c-enviar">Enviar campaña</button>
+            <button type="button" class="ayuda" data-ayuda="c-enviar" aria-label="Qué significa">?</button>
             <button class="fantasma" id="c-volver">Volver</button>
           </div>
           <div id="c-progreso" class="progreso oculto"></div>
@@ -322,8 +372,13 @@
       <div id="ab-comparacion" class="oculto"></div>
       <div class="fila-botones" style="padding:0 22px 12px">
         <button id="d-revisar">Revisar respuestas en Gmail</button>
+        <button type="button" class="ayuda" data-ayuda="d-revisar" aria-label="Qué significa">?</button>
         <button class="primario" id="d-seguimiento">Crear seguimiento a los que no respondieron</button>
-        <button id="d-reanudar" class="oculto">Reanudar envío</button>
+        <button type="button" class="ayuda" data-ayuda="d-seguimiento" aria-label="Qué significa">?</button>
+        <span class="campo-filtro oculto" id="caja-reanudar">
+          <button id="d-reanudar">Reanudar envío</button>
+          <button type="button" class="ayuda" data-ayuda="d-reanudar" aria-label="Qué significa">?</button>
+        </span>
         <button class="fantasma" id="d-volver">Volver a campañas</button>
       </div>
       <div class="filtros-detalle" id="filtros-detalle">
@@ -332,13 +387,19 @@
         <button data-filtro="respondieron">Respondieron</button>
         <button data-filtro="sin-abrir">Sin abrir</button>
         <button data-filtro="problemas">Errores y rebotes</button>
+        <button type="button" class="ayuda" data-ayuda="filtros-detalle" aria-label="Qué significa">?</button>
         <button class="fantasma" id="d-copiar">Copiar correos de la lista</button>
+        <button type="button" class="ayuda" data-ayuda="d-copiar" aria-label="Qué significa">?</button>
       </div>
       <div class="envoltura">
         <table>
           <thead><tr>
-            <th>Establecimiento</th><th>Correo</th><th>Estado</th>
-            <th>Enviado</th><th class="num">Aperturas</th><th>Detalle</th>
+            <th>Establecimiento<button type="button" class="ayuda" data-ayuda="col-establecimiento" aria-label="Qué significa">?</button></th>
+            <th>Correo<button type="button" class="ayuda" data-ayuda="col-contacto" aria-label="Qué significa">?</button></th>
+            <th>Estado<button type="button" class="ayuda" data-ayuda="col-d-estado" aria-label="Qué significa">?</button></th>
+            <th>Enviado</th>
+            <th class="num">Aperturas<button type="button" class="ayuda" data-ayuda="col-d-aperturas" aria-label="Qué significa">?</button></th>
+            <th>Detalle<button type="button" class="ayuda" data-ayuda="col-d-detalle" aria-label="Qué significa">?</button></th>
           </tr></thead>
           <tbody id="cuerpo-destinatarios"></tbody>
         </table>

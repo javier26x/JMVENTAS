@@ -15,6 +15,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 import * as mail from './mailing.js';
+import { ayudaHtml as ay, iniciarAyuda } from './ayuda.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCTmWjLoe2p78K6wng9SF9DKUoAKEoMf1M',
@@ -265,11 +266,22 @@ function filtrar(filas) {
 }
 
 // ---------- tablas ----------
+/* Cada columna lleva su clave de ayuda al lado: el título solo no dice
+   de dónde sale el número. */
 const COLUMNAS = {
-  oportunidades: ['Oport.', 'Establecimiento', 'Por qué', 'Matemática', 'Tier', 'Matrícula', 'Contacto', 'Estado'],
-  prospectos: ['Tier', 'Establecimiento', 'Canal', 'ATE', 'Matemática', 'Matrícula', 'Red', 'Contacto', 'Estado'],
-  cuentas: ['Prio.', 'Cuenta', 'Canal', 'ATE', 'Colegios', 'Matrícula', 'Contacto', 'Confianza', 'Estado'],
-  redes: ['Sostenedor', 'Comuna principal', 'ATE', 'Colegios', 'Matrícula', 'Regiones', 'Estado'],
+  oportunidades: [['Oport.', 'col-oport'], ['Establecimiento', 'col-establecimiento'],
+    ['Por qué', 'col-porque'], ['Matemática', 'col-matematica'], ['Tier', 'col-tier'],
+    ['Matrícula', 'col-matricula'], ['Contacto', 'col-contacto'], ['Estado', 'col-estado']],
+  prospectos: [['Tier', 'col-tier'], ['Establecimiento', 'col-establecimiento'],
+    ['Canal', 'col-canal'], ['ATE', 'col-ate'], ['Matemática', 'col-matematica'],
+    ['Matrícula', 'col-matricula'], ['Red', 'col-red'], ['Contacto', 'col-contacto'],
+    ['Estado', 'col-estado']],
+  cuentas: [['Prio.', 'col-prioridad'], ['Cuenta', 'col-cuenta'], ['Canal', 'col-canal'],
+    ['ATE', 'col-ate'], ['Colegios', 'col-colegios'], ['Matrícula', 'col-matricula'],
+    ['Contacto', 'col-contacto'], ['Confianza', 'col-confianza'], ['Estado', 'col-estado']],
+  redes: [['Sostenedor', 'col-sostenedor'], ['Comuna principal', 'col-comuna-ppal'],
+    ['ATE', 'col-ate'], ['Colegios', 'col-colegios'], ['Matrícula', 'col-matricula'],
+    ['Regiones', 'col-regiones'], ['Estado', 'col-estado']],
 };
 const NUMERICAS = {
   oportunidades: [0, 5], prospectos: [5, 6], cuentas: [4, 5], redes: [3, 4, 5],
@@ -356,9 +368,11 @@ function pintar() {
 
   $('cabecera-tabla').innerHTML =
     (seleccionable ? `<th class="sel"><input type="checkbox" id="sel-todos"`
-      + `${todasMarcadas ? ' checked' : ''} title="Seleccionar todo lo visible"></th>` : '')
-    + COLUMNAS[v].map((c, i) => `<th${NUMERICAS[v].includes(i) ? ' class="num"' : ''}>${esc(c)}</th>`).join('')
-    + (seleccionable ? '<th></th>' : '');
+      + `${todasMarcadas ? ' checked' : ''} aria-label="Seleccionar todo lo visible">`
+      + `${ay('sel-todos')}</th>` : '')
+    + COLUMNAS[v].map(([c, clave], i) => `<th${NUMERICAS[v].includes(i) ? ' class="num"' : ''}>`
+      + `${esc(c)}${ay(clave)}</th>`).join('')
+    + (seleccionable ? `<th>${ay('accion-fila')}</th>` : '');
 
   $('cuerpo').innerHTML = filas.map((f) => {
     const celdas = FILA[v](f);
@@ -374,9 +388,10 @@ function pintar() {
   }).join('');
 
   $('vacio').classList.toggle('oculto', filas.length > 0 || estado.cargando);
-  $('mas').classList.toggle('oculto', !(PAGINADAS.includes(v) && estado.hayMas));
-  $('f-umbral').classList.toggle('oculto', v !== 'oportunidades');
-  $('f-orden').classList.toggle('oculto', v === 'oportunidades');
+  $('caja-mas').classList.toggle('oculto', !(PAGINADAS.includes(v) && estado.hayMas));
+  // Se esconde la caja completa —control y su "?"— y no sólo el select.
+  $('caja-umbral').classList.toggle('oculto', v !== 'oportunidades');
+  $('caja-orden').classList.toggle('oculto', v === 'oportunidades');
 
   $(`n-${v}`).textContent = numero(filas.length);
   pintarChips();
@@ -430,7 +445,7 @@ function pintarChips() {
   }
   $('chips').innerHTML = activos.map((a) => `<span class="chip">${esc(a.texto)}`
     + `<button data-limpiar="${a.id}" title="Quitar">×</button></span>`).join('');
-  $('limpiar-filtros').classList.toggle('oculto', activos.length === 0);
+  $('caja-limpiar').classList.toggle('oculto', activos.length === 0);
 
   /* Los KPI son cifras globales y fijas. Sirven al entrar, pero una vez
      que hay un segmento en juego sólo empujan la tabla hacia abajo: los
@@ -616,9 +631,9 @@ function actualizarAcciones() {
   if (LISTADOS.includes(v)) {
     const n = estado.seleccion.size || filtrar(estado[v]).length;
     const que = estado.seleccion.size ? 'selección' : 'CSV';
-    caja.innerHTML = `<button id="exportar">Exportar ${que} (${numero(n)})</button>`
+    caja.innerHTML = `<button id="exportar">Exportar ${que} (${numero(n)})</button>${ay('exportar')}`
       + (PAGINADAS.includes(v)
-        ? ' <button class="primario" id="crear-campana">Crear campaña con este segmento</button>'
+        ? ` <button class="primario" id="crear-campana">Crear campaña con este segmento</button>${ay('crear-campana')}`
         : '');
     $('exportar').onclick = exportarCsv;
     if (PAGINADAS.includes(v)) $('crear-campana').onclick = abrirEditorDesdeSegmento;
@@ -1043,7 +1058,7 @@ async function abrirDetalle(id) {
   const abiertos = dest.filter((d) => (d.aperturas || 0) > 0).length;
   const respondieron = dest.filter((d) => d.estado === 'respondido').length;
   const problemas = dest.filter((d) => ['error', 'rebotado', 'baja'].includes(d.estado)).length;
-  $('d-reanudar').classList.toggle('oculto', pendientes === 0);
+  $('caja-reanudar').classList.toggle('oculto', pendientes === 0);
   $('d-seguimiento').classList.toggle('oculto',
     enviados === 0 || Boolean(c?.seguimientoDe));
 
@@ -1055,17 +1070,18 @@ async function abrirDetalle(id) {
     { e: 'Destinatarios', v: numero(dest.length), n: 'con correo' },
     { e: 'Enviados', v: numero(enviados), n: pendientes ? `${numero(pendientes)} pendientes` : 'tanda completa' },
     c?.track
-      ? { e: 'Abrieron', v: `${tasaApertura}%`, t: tono(tasaApertura, 35, 20),
+      ? { e: 'Abrieron', v: `${tasaApertura}%`, t: tono(tasaApertura, 35, 20), a: 'kpi-apertura',
         n: tasaApertura >= 35 ? `${numero(abiertos)} de ${numero(enviados)}`
           : 'bajo el objetivo (35%): revisa el asunto y el remitente' }
-      : { e: 'Aperturas', v: '—', n: 'seguimiento desactivado' },
-    { e: 'Respuestas', v: `${tasaRespuesta}%`, t: tono(tasaRespuesta, 3, 1),
+      : { e: 'Aperturas', v: '—', n: 'seguimiento desactivado', a: 'kpi-apertura' },
+    { e: 'Respuestas', v: `${tasaRespuesta}%`, t: tono(tasaRespuesta, 3, 1), a: 'kpi-respuesta',
       n: tasaRespuesta >= 3 ? `${numero(respondieron)} respuestas · la métrica que importa`
         : 'bajo el objetivo (3%): revisa el mensaje y la propuesta' },
-    { e: 'Rebotes y bajas', v: `${tasaProblema}%`, t: tono(tasaProblema, 3, 6, true),
+    { e: 'Rebotes y bajas', v: `${tasaProblema}%`, t: tono(tasaProblema, 3, 6, true), a: 'kpi-rebotes',
       n: tasaProblema > 3 ? 'alto: depura la lista antes de la próxima tanda'
         : `${numero(problemas)} de ${numero(enviados)}` },
-  ].map((k) => `<div class="kpi ${k.t || ''}"><div class="etiqueta">${esc(k.e)}</div>
+  ].map((k) => `<div class="kpi ${k.t || ''}">
+      <div class="etiqueta">${esc(k.e)}${k.a ? ay(k.a) : ''}</div>
       <div class="valor">${esc(k.v)}</div><div class="nota">${esc(k.n)}</div></div>`).join('');
 
   pintarComparacion(dest, c);
@@ -1635,6 +1651,11 @@ getRedirectResult(auth).catch((e) => {
   aviso.classList.remove('oculto');
 });
 $('salir').addEventListener('click', () => signOut(auth));
+
+/* Las escuchas de la ayuda son delegadas en el documento: los "?" de las
+   tablas se recrean en cada repintado, así que engancharlos uno a uno los
+   dejaría muertos a la primera. */
+iniciarAyuda();
 
 onAuthStateChanged(auth, async (u) => {
   $('acceso').classList.toggle('oculto', Boolean(u));
