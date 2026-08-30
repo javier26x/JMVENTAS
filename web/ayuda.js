@@ -18,19 +18,21 @@ export const AYUDA = {
     + 'cargado en pantalla, sin volver a consultar el servidor. Ignora tildes '
     + 'y mayúsculas. Atajo: la tecla /'],
   'f-tier': ['Tier',
-    'Qué tan fácil es cerrar la venta, calculado con una fórmula: fricción de '
+    'Se pueden marcar varios a la vez: el filtro trae los colegios de '
+    + 'cualquiera de los tiers elegidos. '
+    + 'Qué tan fácil es cerrar la venta, calculado con una fórmula: fricción de '
     + 'compra (30%), matrícula (20%), tamaño de la red del sostenedor (20%), '
     + 'copago (15%), zona urbana (10%) y convenio PIE (5%). '
     + '1 · Fácil desde 62 puntos, 2 · Medio desde 48, 3 · Difícil bajo eso.'],
   'f-canal': ['Canal de venta',
-    'Cómo se compra, que no es lo mismo que cuánto se vende. '
+    'Admite varios a la vez. Cómo se compra, que no es lo mismo que cuánto se vende. '
     + 'A · Directo Privado: decide el colegio, contrato directo. '
     + 'B · Red Subvencionada: un sostenedor con 3 o más colegios, una reunión '
     + 'para varios. C · PS Individual: subvencionado suelto. '
     + 'D · Municipal/DAEM y E · SLEP: compra pública, plazos largos y '
     + 'normalmente Registro ATE.'],
   'f-region': ['Región',
-    'Región del establecimiento. Sirve para armar tandas por zona: la '
+    'Admite varias a la vez. Región del establecimiento. Sirve para armar tandas por zona: la '
     + 'capacitación docente es presencial, y concentrar colegios cercanos '
     + 'abarata la implementación.'],
   'f-ate': ['Requisito ATE',
@@ -39,7 +41,7 @@ export const AYUDA = {
     + 'siempre lo exigen. Mientras JUMP Math no esté inscrito, los "Sin ATE" '
     + 'son los que pueden firmar este año.'],
   'f-estado': ['Estado en el CRM',
-    'Dónde va cada prospecto en el embudo. Se marca a mano en la columna '
+    'Admite varios a la vez. Dónde va cada prospecto en el embudo. Se marca a mano en la columna '
     + 'Estado, y pasa solo a "contactado" cuando le llega una campaña.'],
   'f-correo': ['Con o sin correo',
     'Sólo los que tienen dirección de correo pueden entrar en una campaña. '

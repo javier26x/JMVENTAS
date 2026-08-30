@@ -86,6 +86,8 @@ const estado = {
   // un clic; si no está desplegada, el correo sale sin esas piezas.
   funcion: false,
   filtroDetalle: 'todos',
+  // Filtros de varios valores: id -> conjunto de valores elegidos.
+  multi: {},
   // id -> fila. Se guarda el dato completo, no sólo el id, para que la
   // selección sobreviva al cambio de filtros y a la paginación: si sólo
   // se guardara el id, al filtrar se perdería lo elegido antes.
@@ -94,6 +96,13 @@ const estado = {
 
 const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
   'f-estado', 'f-correo', 'f-orden', 'f-umbral'];
+
+/* Filtros que aceptan varios valores a la vez. Un vendedor no trabaja "el
+   tier 1": trabaja "tier 1 y 2 de la Metropolitana y Valparaíso". Obligar
+   a elegir uno solo lo empujaba a exportar y cruzar en Excel.
+   Los que quedan fuera son excluyentes por naturaleza: un colegio tiene o
+   no tiene correo, y el orden es uno solo. */
+const MULTI = ['f-tier', 'f-canal', 'f-region', 'f-estado'];
 const ETIQUETA_FILTRO = {
   buscar: 'Búsqueda', 'f-tier': 'Tier', 'f-canal': 'Canal', 'f-region': 'Región',
   'f-ate': 'ATE', 'f-estado': 'Estado', 'f-correo': 'Correo', 'f-umbral': 'Dolor',
@@ -209,6 +218,29 @@ async function cargarFijos() {
    En vez de declarar esa explosión, se manda al servidor el filtro más
    selectivo y el resto se afina en el cliente sobre la página traída. El
    contador siempre dice cuántos registros se revisaron. */
+/* Firestore admite un solo operador de conjunto por consulta y hasta 30
+   valores. Con varios valores en un filtro se usa `in`, que aprovecha el
+   mismo índice que la igualdad; si hay más de un filtro con valores, sólo
+   el primero viaja al servidor y el resto se afina en el cliente. */
+const CAMPO_SERVIDOR = {
+  'f-tier': ['tierNum', (v) => Number(v)],
+  'f-canal': ['canal', (v) => v],
+  'f-region': ['region', (v) => v],
+  'f-estado': ['estadoCrm', (v) => v],
+};
+
+function condicionMulti(ids) {
+  for (const id of ids) {
+    const vals = seleccionados(id);
+    if (!vals.length || vals.length > 30) continue;
+    const [campo, convertir] = CAMPO_SERVIDOR[id];
+    return vals.length === 1
+      ? where(campo, '==', convertir(vals[0]))
+      : where(campo, 'in', vals.map(convertir));
+  }
+  return null;
+}
+
 function consultaProspectos(desde) {
   const partes = [collection(db, 'prospectos')];
 
@@ -216,18 +248,15 @@ function consultaProspectos(desde) {
     // Una desigualdad obliga a ordenar primero por ese mismo campo, así
     // que el ranking por oportunidad se arma en el cliente.
     partes.push(where('dolorMate', '>=', Number($('f-umbral').value) || 60));
-    if ($('f-tier').value) partes.push(where('tierNum', '==', Number($('f-tier').value)));
-    else if ($('f-canal').value) partes.push(where('canal', '==', $('f-canal').value));
-    else if ($('f-region').value) partes.push(where('region', '==', $('f-region').value));
+    const cond = condicionMulti(['f-tier', 'f-canal', 'f-region']);
+    if (cond) partes.push(cond);
     partes.push(orderBy('dolorMate', 'desc'));
   } else {
     const texto = normalizar($('buscar').value).trim();
     const palabra = texto.split(/\s+/).filter((p) => p.length >= 3)[0];
+    const cond = condicionMulti(['f-tier', 'f-canal', 'f-region', 'f-estado']);
     if (palabra) partes.push(where('tokens', 'array-contains', palabra));
-    else if ($('f-tier').value) partes.push(where('tierNum', '==', Number($('f-tier').value)));
-    else if ($('f-canal').value) partes.push(where('canal', '==', $('f-canal').value));
-    else if ($('f-region').value) partes.push(where('region', '==', $('f-region').value));
-    else if ($('f-estado').value) partes.push(where('estadoCrm', '==', $('f-estado').value));
+    else if (cond) partes.push(cond);
     else if ($('f-ate').value) partes.push(where('requiereAte', '==', $('f-ate').value === 'si'));
     partes.push(orderBy($('f-orden').value || 'matBasica', 'desc'));
   }
@@ -268,14 +297,18 @@ async function cargarProspectos({ continuar = false } = {}) {
 
 function filtrar(filas) {
   const texto = normalizar($('buscar').value).trim();
-  const [tier, canal, region, ate, est, correo] =
-    ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado', 'f-correo'].map((i) => $(i).value);
+  const [ate, correo] = ['f-ate', 'f-correo'].map((i) => $(i).value);
+  // Un conjunto vacío no filtra: significa "todos", no "ninguno".
+  const tier = estado.multi['f-tier'];
+  const canal = estado.multi['f-canal'];
+  const region = estado.multi['f-region'];
+  const est = estado.multi['f-estado'];
   return filas.filter((f) => {
-    if (tier && String(f.tierNum ?? '') !== tier) return false;
-    if (canal && f.canal !== canal) return false;
-    if (region && f.region !== region) return false;
+    if (tier.size && !tier.has(String(f.tierNum ?? ''))) return false;
+    if (canal.size && !canal.has(f.canal)) return false;
+    if (region.size && !region.has(f.region)) return false;
     if (ate && f.requiereAte !== (ate === 'si')) return false;
-    if (est && (f.estadoCrm || 'nuevo') !== est) return false;
+    if (est.size && !est.has(f.estadoCrm || 'nuevo')) return false;
     if (correo) {
       const tiene = Boolean(String(f.email || '').trim() || (f.emails || []).length);
       if (tiene !== (correo === 'si')) return false;
@@ -439,7 +472,9 @@ function pintar() {
    no debería tener que rearmarlo cada vez que vuelve. */
 function guardarFiltros() {
   const v = {};
-  for (const id of CAMPOS_FILTRO) v[id] = $(id).value;
+  for (const id of CAMPOS_FILTRO) {
+    v[id] = MULTI.includes(id) ? seleccionados(id) : $(id).value;
+  }
   try { localStorage.setItem('jm.filtros', JSON.stringify(v)); } catch { /* modo privado */ }
 }
 
@@ -447,7 +482,12 @@ function restaurarFiltros() {
   try {
     const v = JSON.parse(localStorage.getItem('jm.filtros') || '{}');
     for (const id of CAMPOS_FILTRO) {
-      if (v[id] != null && $(id).querySelector?.(`option[value="${CSS.escape(v[id])}"]`) !== null) {
+      if (v[id] == null) continue;
+      if (MULTI.includes(id)) {
+        // Puede venir guardado de la versión de un solo valor: se acepta igual.
+        estado.multi[id] = new Set(Array.isArray(v[id]) ? v[id] : [v[id]].filter(Boolean));
+        refrescarMulti(id);
+      } else if ($(id).querySelector?.(`option[value="${CSS.escape(v[id])}"]`) !== null) {
         $(id).value = v[id];
       }
     }
@@ -459,17 +499,26 @@ function pintarChips() {
   for (const id of CAMPOS_FILTRO) {
     if (id === 'f-orden') continue;
     if (id === 'f-umbral' && estado.vista !== 'oportunidades') continue;
+    const etiqueta = ETIQUETA_FILTRO[id];
+    // No repetir la etiqueta si la opción ya la dice: "ATE: Sin requisito ATE"
+    const rotular = (texto) => (normalizar(texto).includes(normalizar(etiqueta))
+      ? texto : `${etiqueta}: ${texto}`);
+
+    if (MULTI.includes(id)) {
+      // Una ficha por valor: así se puede quitar uno sin perder el resto.
+      for (const v of seleccionados(id)) {
+        activos.push({ id, valor: v, texto: rotular(etiquetaOpcion(id, v)) });
+      }
+      continue;
+    }
     const el = $(id);
     if (!el.value) continue;
-    const texto = el.tagName === 'SELECT'
-      ? el.options[el.selectedIndex].text : el.value;
-    // No repetir la etiqueta si la opción ya la dice: "ATE: Sin requisito ATE"
-    const etiqueta = ETIQUETA_FILTRO[id];
-    const redundante = normalizar(texto).includes(normalizar(etiqueta));
-    activos.push({ id, texto: redundante ? texto : `${etiqueta}: ${texto}` });
+    const texto = el.tagName === 'SELECT' ? el.options[el.selectedIndex].text : el.value;
+    activos.push({ id, texto: rotular(texto) });
   }
   $('chips').innerHTML = activos.map((a) => `<span class="chip">${esc(a.texto)}`
-    + `<button data-limpiar="${a.id}" title="Quitar">×</button></span>`).join('');
+    + `<button data-limpiar="${esc(a.id)}"${a.valor !== undefined
+      ? ` data-valor="${esc(a.valor)}"` : ''} title="Quitar">×</button></span>`).join('');
   $('caja-limpiar').classList.toggle('oculto', activos.length === 0);
 
   /* Los KPI son cifras globales y fijas. Sirven al entrar, pero una vez
@@ -502,8 +551,75 @@ function poblarFiltros() {
     for (const v of [...new Set(universo.map((p) => p[campo]).filter(Boolean))].sort()) {
       el.add(new Option(v, v));
     }
+    refrescarMulti(sel);
   }
 }
+
+// ---------- filtros de varios valores ----------
+/* El <select> original se queda en el documento como lista de opciones y
+   como origen de las etiquetas: así `poblarFiltros` sigue igual y la
+   accesibilidad no depende de reinventar un desplegable. Encima se dibuja
+   un control propio con casillas, y lo elegido vive en un conjunto. */
+const seleccionados = (id) => [...(estado.multi[id] || [])];
+const etiquetaOpcion = (id, v) => ($(id).querySelector(`option[value="${CSS.escape(v)}"]`)
+  ?.textContent || v);
+
+function montarMulti() {
+  for (const id of MULTI) {
+    estado.multi[id] = new Set();
+    const sel = $(id);
+    sel.classList.add('oculto');
+    sel.setAttribute('aria-hidden', 'true');
+    sel.tabIndex = -1;
+
+    const caja = document.createElement('div');
+    caja.className = 'multi';
+    caja.dataset.para = id;
+    caja.innerHTML = `<button type="button" class="multi-boton" aria-expanded="false"
+        aria-haspopup="true"></button>
+      <div class="multi-panel oculto" role="group"></div>`;
+    sel.after(caja);
+    refrescarMulti(id);
+  }
+}
+
+function refrescarMulti(id) {
+  const caja = document.querySelector(`.multi[data-para="${id}"]`);
+  if (!caja) return;
+  const sel = $(id);
+  const elegidos = estado.multi[id];
+  const opciones = [...sel.options].filter((o) => o.value);
+
+  caja.querySelector('.multi-panel').innerHTML = opciones.map((o) => `
+    <label class="multi-op">
+      <input type="checkbox" value="${esc(o.value)}"${elegidos.has(o.value) ? ' checked' : ''}>
+      <span>${esc(o.textContent)}</span>
+    </label>`).join('')
+    + (elegidos.size ? '<button type="button" class="multi-nada">Quitar todos</button>' : '');
+
+  const boton = caja.querySelector('.multi-boton');
+  // El botón dice lo elegido, no "3 seleccionados": el valor concreto
+  // ahorra abrir el panel para recordar qué se filtró.
+  boton.textContent = elegidos.size === 0 ? sel.options[0].textContent
+    : elegidos.size === 1 ? etiquetaOpcion(id, seleccionados(id)[0])
+      : `${ETIQUETA_FILTRO[id]}: ${elegidos.size}`;
+  boton.classList.toggle('activo', elegidos.size > 0);
+}
+
+function alternarMulti(id, valor, marcado) {
+  const s = estado.multi[id];
+  if (marcado) s.add(valor); else s.delete(valor);
+  refrescarMulti(id);
+  guardarFiltros();
+  alFiltrar({ inmediato: true });
+}
+
+const cerrarPaneles = () => {
+  for (const c of document.querySelectorAll('.multi')) {
+    c.querySelector('.multi-panel').classList.add('oculto');
+    c.querySelector('.multi-boton').setAttribute('aria-expanded', 'false');
+  }
+};
 
 // ---------- panel ----------
 /* Cada barra sale de un conteo agregado en el servidor, así que cubre
@@ -987,11 +1103,15 @@ function descripcionSegmento() {
       + ' elegido a mano'.replace('elegido', estado.seleccion.size === 1 ? 'elegido' : 'elegidos');
   }
   const p = [];
-  if ($('f-tier').value) p.push(`Tier ${$('f-tier').value}`);
-  if ($('f-canal').value) p.push($('f-canal').value);
-  if ($('f-region').value) p.push($('f-region').value);
+  const lista = (id, fn) => {
+    const v = seleccionados(id);
+    if (v.length) p.push(v.map(fn).join(' + '));
+  };
+  lista('f-tier', (v) => `Tier ${v}`);
+  lista('f-canal', (v) => v);
+  lista('f-region', (v) => v);
   if ($('f-ate').value) p.push($('f-ate').value === 'no' ? 'sin ATE' : 'requiere ATE');
-  if ($('f-estado').value) p.push(ETIQUETA_ESTADO[$('f-estado').value] || $('f-estado').value);
+  lista('f-estado', (v) => ETIQUETA_ESTADO[v] || v);
   if (estado.vista === 'oportunidades') p.push(`dolor ${$('f-umbral').value}+`);
   return p.length ? p.join(' · ') : 'Todos los prospectos cargados';
 }
@@ -1689,7 +1809,15 @@ $('sel-campana').addEventListener('click', abrirEditorDesdeSegmento);
 $('chips').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-limpiar]');
   if (!b) return;
-  $(b.dataset.limpiar).value = '';
+  const id = b.dataset.limpiar;
+  if (MULTI.includes(id)) {
+    // Quitar la ficha de un valor no borra los demás valores del filtro.
+    if (b.dataset.valor !== undefined) estado.multi[id].delete(b.dataset.valor);
+    else estado.multi[id].clear();
+    refrescarMulti(id);
+  } else {
+    $(id).value = '';
+  }
   guardarFiltros();
   alFiltrar({ inmediato: true });
 });
@@ -1698,6 +1826,7 @@ function limpiarFiltros() {
   for (const id of CAMPOS_FILTRO) {
     if (id === 'f-orden') continue;
     if (id === 'f-umbral') { $(id).value = '60'; continue; }
+    if (MULTI.includes(id)) { estado.multi[id].clear(); refrescarMulti(id); continue; }
     $(id).value = '';
   }
   guardarFiltros();
@@ -1717,7 +1846,39 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('buscar').addEventListener('input', () => { guardarFiltros(); alFiltrar(); });
-for (const id of ['f-tier', 'f-canal', 'f-region', 'f-ate', 'f-estado', 'f-correo', 'f-orden', 'f-umbral']) {
+// ---------- filtros de varios valores ----------
+document.addEventListener('click', (e) => {
+  const boton = e.target.closest('.multi-boton');
+  const dentro = e.target.closest('.multi-panel');
+  if (!boton && !dentro) { cerrarPaneles(); return; }
+  if (!boton) return;
+  const panel = boton.nextElementSibling;
+  const abierto = !panel.classList.contains('oculto');
+  cerrarPaneles();
+  if (abierto) return;
+  panel.classList.remove('oculto');
+  boton.setAttribute('aria-expanded', 'true');
+});
+
+$('filtros').addEventListener('change', (e) => {
+  const casilla = e.target.closest('.multi-panel input[type="checkbox"]');
+  if (!casilla) return;
+  alternarMulti(casilla.closest('.multi').dataset.para, casilla.value, casilla.checked);
+});
+
+$('filtros').addEventListener('click', (e) => {
+  const nada = e.target.closest('.multi-nada');
+  if (!nada) return;
+  const id = nada.closest('.multi').dataset.para;
+  estado.multi[id].clear();
+  refrescarMulti(id);
+  guardarFiltros();
+  alFiltrar({ inmediato: true });
+});
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarPaneles(); });
+
+for (const id of ['f-ate', 'f-correo', 'f-orden', 'f-umbral']) {
   $(id).addEventListener('change', () => { guardarFiltros(); alFiltrar({ inmediato: true }); });
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));
@@ -2074,6 +2235,9 @@ $('pilas-hoy').addEventListener('click', (e) => {
    tablas se recrean en cada repintado, así que engancharlos uno a uno los
    dejaría muertos a la primera. */
 iniciarAyuda();
+// Los filtros de varios valores se montan sobre los <select> del documento
+// antes de restaurar lo que había guardado.
+montarMulti();
 
 onAuthStateChanged(auth, async (u) => {
   $('acceso').classList.toggle('oculto', Boolean(u));
