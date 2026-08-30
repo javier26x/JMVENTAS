@@ -162,7 +162,64 @@ mano — la app excluye por RBD y de forma permanente.
 
 ---
 
-## 8. Pendientes conocidos
+## 8. Mantener los datos frescos
+
+**Qué está al día y qué no**, a agosto de 2026:
+
+| Dato | Estado | Próxima actualización |
+|---|---|---|
+| SIMCE Matemática | 2025, la última que existe | resultados 2026 → mediados de 2027 |
+| Directorio de establecimientos | 2025 | el de 2026 aparece hacia noviembre |
+| Categoría de Desempeño | **falta** | disponible ya, ver abajo |
+| Correos | base 2020, 70% en dominios gratuitos | los limpia la propia campaña |
+| Dependencia (SLEP) | 2025: ~544 colegios mal etiquetados | ver abajo |
+
+### Categoría de Desempeño
+
+Es la mejor señal que falta: clasifica cada colegio en Alto, Medio,
+Medio-Bajo o **Insuficiente**, y un colegio Insuficiente está bajo presión
+legal para mejorar. En la fórmula de dolor **pesa el doble** que el puntaje,
+así que un colegio con buen SIMCE pero categoría Insuficiente sube a dolor
+69, que es exactamente la prioridad correcta.
+
+```bash
+# 1. Ver qué hay publicado
+python3 scripts/cosechar-simce.py --descubrir
+
+# 2. Cosechar la categoría (se suma a lo ya cosechado, no lo reemplaza)
+python3 scripts/cosechar-simce.py --url <enlace de Categoría de Desempeño>
+
+# 3. Cargar a Firestore
+node firebase/actualizar-contactos.mjs --admin \
+  --csv datos/simce-matematica.csv --fuente simce
+```
+
+El cosechador arranca desde el CSV que ya existe, así que la categoría
+**enriquece** el puntaje en vez de pisarlo. Para empezar limpio: `--desde-cero`.
+
+### Colegios traspasados a un SLEP
+
+El 1 de enero de 2026, diez servicios locales asumieron 827
+establecimientos que la base sigue llamando "Municipal/DAEM". Cambia quién
+compra —decide el director del SLEP, no el alcalde— y el correo del DAEM
+puede estar muerto.
+
+```bash
+node firebase/actualizar-slep.mjs --admin            # sólo informa
+node firebase/actualizar-slep.mjs --admin --aplicar  # escribe
+```
+
+El mapa de comunas está en `datos/slep-2026.csv`, con la fuente de cada
+fila. Es un dato que se verifica leyendo y no deduciendo: el SLEP "Los
+Álamos" administra comunas del **Maule**, no la comuna homónima del Biobío,
+que se traspasa recién en 2027.
+
+Después del traspaso conviene enviarles **en una tanda aparte** y mirar el
+rebote: si el correo del DAEM murió, se sabe de inmediato.
+
+---
+
+## 9. Pendientes conocidos
 
 - [ ] Confirmar Registro ATE.
 - [ ] Dominio propio en Google Workspace para el remitente.
@@ -170,5 +227,6 @@ mano — la app excluye por RBD y de forma permanente.
 - [ ] Completar las cifras verificadas en `web/evidencia.html` (el bloque está
       marcado con un comentario dentro del archivo).
 - [ ] Cognita como cuenta #1: `chilecomunicaciones@cognita.com` · +56 2 2430 9800.
-- [ ] Categoría de Desempeño de la Agencia de Calidad: aún no está en la base;
-      hoy el dolor se calcula sólo con puntaje SIMCE.
+- [ ] Cosechar la Categoría de Desempeño (sección 8) y re-etiquetar los SLEP.
+- [ ] Noviembre: bajar el Directorio Oficial 2026 y rehacer la base con
+      `bash scripts/build-prospectos.sh`.

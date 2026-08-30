@@ -501,6 +501,36 @@ def indice_base():
         return {int(r['RBD']) for r in csv.DictReader(f) if r['RBD'].isdigit()}
 
 
+def cargar_previo(ruta):
+    """Lo ya cosechado, para enriquecerlo en vez de reemplazarlo.
+
+    La Categoría de Desempeño y el puntaje SIMCE se publican en archivos
+    distintos. Sin esto, cosechar la categoría sola recalcularía el dolor
+    ignorando el puntaje —y al revés—, porque `dolor()` pondera los dos.
+    """
+    filas = {}
+    if not os.path.exists(ruta):
+        return filas
+    with open(ruta, encoding='utf-8-sig', newline='') as f:
+        for r in csv.DictReader(f):
+            try:
+                rbd = int(r['RBD'])
+            except (ValueError, TypeError, KeyError):
+                continue
+            def num(v):
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    return None
+            filas[rbd] = {
+                'mate': num(r.get('SIMCE_MATE')),
+                'anio': int(num(r.get('SIMCE_ANIO')) or 0) or None,
+                'cat': (r.get('CATEGORIA') or '').strip() or None,
+                'fuentes': {t.strip() for t in (r.get('FUENTE') or '').split(';') if t.strip()},
+            }
+    return filas
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--descubrir', action='store_true')
@@ -512,6 +542,9 @@ def main():
     ap.add_argument('--codigo-mate', type=int, action='append', default=[],
                     help='código de asignatura de matemática, si el '
                          'diccionario no lo resuelve (ej: --codigo-mate 2)')
+    ap.add_argument('--desde-cero', action='store_true',
+                    help='ignora lo ya cosechado en el CSV de salida en vez '
+                         'de enriquecerlo')
     ap.add_argument('--incluir-idps', action='store_true',
                     help='procesa también IDPS (59 MB de indicadores '
                          'socioemocionales, no aportan a matemática)')
@@ -544,7 +577,11 @@ def main():
         except Exception as e:
             print(f'  ! {u}: {e}')
 
-    filas = {}
+    filas = {} if a.desde_cero else cargar_previo(a.salida)
+    if filas:
+        print(f'Partiendo de {len(filas)} establecimientos ya cosechados '
+              f'({os.path.basename(a.salida)}).')
+        print('  Lo nuevo se suma; para empezar limpio usa --desde-cero.\n')
     manifiestos = []
     for ruta in rutas:
         print(f'\nLeyendo {os.path.basename(ruta)}')

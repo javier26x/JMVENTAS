@@ -347,11 +347,15 @@ const NUMERICAS = {
 
 const partes = (s) => String(s || '').split(';').map((x) => x.trim()).filter(Boolean);
 
+/* Un colegio traspasado ya no lo compra su municipio: lo compra el
+   servicio local, y con quién se negocia es media venta. */
+const administra = (p) => (p.slep ? `SLEP ${p.slep}` : p.dependencia || p.canal || '');
+
 const FILA = {
   oportunidades: (p) => `
     <td class="num"><span class="oport">${p._oport ?? '—'}</span></td>
     <td><div class="nombre">${esc(p.establecimiento)}</div>
-      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(p.canal)}</div></td>
+      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(administra(p))}</div></td>
     <td class="porque">${esc(porQue(p)) || '—'}</td>
     <td>${celdaMate(p)}</td>
     <td>${distintivoTier(p.tierNum)}<div class="sub">${distintivoAte(p.requiereAte)}</div></td>
@@ -362,7 +366,7 @@ const FILA = {
   prospectos: (p) => `
     <td>${distintivoTier(p.tierNum)}</td>
     <td><div class="nombre">${esc(p.establecimiento)}</div>
-      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(p.dependencia)}</div></td>
+      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(administra(p))}</div></td>
     <td>${esc(p.canal)}</td>
     <td>${distintivoAte(p.requiereAte)}</td>
     <td>${celdaMate(p)}</td>
@@ -964,7 +968,7 @@ function cerrarFicha() {
 function pintarFicha(p) {
   $('ficha-nombre').textContent = mail.titulo(p.establecimiento || p.id);
   $('ficha-sub').textContent = [`RBD ${p.id}`, mail.titulo(p.comuna || ''),
-    mail.titulo(p.region || ''), p.dependencia].filter(Boolean).join(' · ');
+    mail.titulo(p.region || ''), administra(p)].filter(Boolean).join(' · ');
 
   const brecha = Number.isFinite(Number(p.simceMate))
     ? Math.round(PROMEDIO_MATE - Number(p.simceMate)) : null;
