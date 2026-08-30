@@ -12,7 +12,7 @@ import {
 import {
   getFirestore, collection, doc, getDocs, getDoc, query, where,
   orderBy, limit, startAfter, serverTimestamp, setDoc, getCountFromServer,
-  writeBatch,
+  writeBatch, deleteField,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 import * as mail from './mailing.js';
@@ -85,6 +85,8 @@ const estado = {
   // La función de seguimiento atiende el pixel, los clics y la baja de
   // un clic; si no está desplegada, el correo sale sin esas piezas.
   funcion: false,
+  // Se pone a true si la base todavía no tiene el cruce con SIMCE.
+  sinDolor: false,
   // Qué sabe el servidor sobre el envío programado: si está configurado,
   // con qué cuenta quedó autorizado y con qué id de cliente pedirlo.
   programado: { disponible: false, clientId: '', autorizacion: null },
@@ -250,10 +252,20 @@ function consultaProspectos(desde) {
   if (estado.vista === 'oportunidades') {
     // Una desigualdad obliga a ordenar primero por ese mismo campo, así
     // que el ranking por oportunidad se arma en el cliente.
-    partes.push(where('dolorMate', '>=', Number($('f-umbral').value) || 60));
+    /* Mientras el cruce con SIMCE no esté cargado, ningún documento
+       tiene `dolorMate`, y Firestore descarta en silencio los que no
+       traen el campo por el que se ordena: la pantalla de entrada salía
+       vacía sobre una base de 7.808 colegios sanos, sin un solo error.
+       Se cae al puntaje de prospección, que sí existe en todos. */
     const cond = condicionMulti(['f-tier', 'f-canal', 'f-region']);
-    if (cond) partes.push(cond);
-    partes.push(orderBy('dolorMate', 'desc'));
+    if (estado.sinDolor) {
+      if (cond) partes.push(cond);
+      partes.push(orderBy('puntaje', 'desc'));
+    } else {
+      partes.push(where('dolorMate', '>=', Number($('f-umbral').value) || 60));
+      if (cond) partes.push(cond);
+      partes.push(orderBy('dolorMate', 'desc'));
+    }
   } else {
     const texto = normalizar($('buscar').value).trim();
     const palabra = texto.split(/\s+/).filter((p) => p.length >= 3)[0];
@@ -280,7 +292,22 @@ async function cargarProspectos({ continuar = false } = {}) {
   try {
     const snap = await getDocs(consultaProspectos(continuar ? estado.ultimoDoc : null));
     if (mio !== estado.peticion) return;
-    const filas = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let filas = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    /* Cero resultados en Oportunidades, sin haber probado todavía: casi
+       seguro que falta el dato de SIMCE. Se reintenta una vez por
+       puntaje antes de decirle a nadie que no hay colegios. */
+    if (vista === 'oportunidades' && !filas.length && !continuar && !estado.sinDolor) {
+      estado.sinDolor = true;
+      const otra = await getDocs(consultaProspectos(null));
+      if (mio !== estado.peticion) return;
+      filas = otra.docs.map((d) => ({ id: d.id, ...d.data() }));
+      snap.docs.length = 0;
+      snap.docs.push(...otra.docs);
+      if (filas.length) {
+        avisar('Todavía no está cargado el SIMCE, así que la lista va ordenada '
+          + 'por puntaje de prospección.');
+      }
+    }
     if (vista === 'oportunidades') for (const f of filas) f._oport = oportunidadDe(f);
     estado[vista] = continuar ? estado[vista].concat(filas) : filas;
     estado.ultimoDoc = snap.docs[snap.docs.length - 1] || null;
@@ -1045,7 +1072,13 @@ async function guardarFicha() {
     estadoCrm: $('ficha-estado').value,
     responsable: $('ficha-responsable').value.trim(),
     proximoPaso: $('ficha-paso').value.trim(),
-    proximoPasoEn: $('ficha-paso-fecha').value || '',
+    /* Sin fecha se BORRA el campo, no se guarda vacío. En Firestore la
+       cadena vacía es menor que cualquier fecha, así que "vence hoy o
+       antes" la daba por vencida: bastaba abrir fichas para pegar
+       correos —sin tocar la fecha— para que la bandeja del día se
+       llenara de "sin descripción · sin fecha" y expulsara, por el tope
+       de 60, la reunión que sí vencía. */
+    proximoPasoEn: $('ficha-paso-fecha').value || deleteField(),
     notas: $('ficha-notas').value.trim(),
     actualizado: serverTimestamp(),
   };
@@ -1167,12 +1200,17 @@ function segmentoActual() {
     .filter((p) => mail.primerCorreo(p.email))
     .map((p) => ({ ...p, rbd: p.rbd ?? Number(p.id) }));
 
-  const podas = { baja: 0, repetido: 0, reciente: 0 };
+  const podas = { baja: 0, repetido: 0, reciente: 0, enCurso: 0 };
+  /* Escribirle en frío a quien ya está en conversación es peor que no
+     escribirle: llega un correo de presentación a alguien con quien hay
+     una reunión hecha o una propuesta encima de la mesa. */
+  const CERRADOS = ['reunion', 'propuesta', 'ganado', 'descartado'];
   const porCasilla = new Map();
   const limite = Date.now() - DIAS_RECONTACTO * 864e5;
 
   for (const p of conCorreo) {
     if (estado.bajas.has(String(p.rbd))) { podas.baja += 1; continue; }
+    if (CERRADOS.includes(String(p.estadoCrm || ''))) { podas.enCurso += 1; continue; }
     if ((p.ultimoContacto?.toMillis?.() || 0) > limite) { podas.reciente += 1; continue; }
 
     const casilla = mail.primerCorreo(p.email).toLowerCase();
@@ -1217,7 +1255,13 @@ function abrirEditor() {
   delete $('c-tanda').dataset.tocado;
   restaurarContacto();
   pintarDisenio();
+  // Cada apertura del editor reinicia la elección de "cuándo sale".
+  c.__reciennacida = true;
   pintarProgramar();
+  // El progreso es de la campaña anterior: "Listo: 40 enviados" bajo una
+  // campaña recién creada se lee como que ya salió.
+  $('c-progreso').classList.add('oculto');
+  $('c-progreso').textContent = '';
   $('segmento-desc').textContent = c.segmento?.desc || '—';
   resumenSegmento();
   pintarTanda();
@@ -1241,6 +1285,7 @@ function resumenSegmento() {
     podas.baja ? `${numero(podas.baja)} dados de baja` : '',
     podas.repetido ? `${numero(podas.repetido)} que comparten casilla` : '',
     podas.reciente ? `${numero(podas.reciente)} contactados hace menos de ${DIAS_RECONTACTO} días` : '',
+    podas.enCurso ? `${numero(podas.enCurso)} ya en conversación` : '',
   ].filter(Boolean);
 
   $('segmento-resumen').innerHTML = `
@@ -1852,9 +1897,23 @@ async function enviar() {
   await pintarTanda();
   const pedidos = Number($('c-tanda').value) || estado.plan?.resto || mail.LIMITE_DIARIO;
   const cupo = Math.min(estado.plan?.resto ?? mail.LIMITE_DIARIO, mail.LIMITE_DIARIO);
-  const tanda = estado.destinatarios.slice(0, Math.min(pedidos, cupo));
+  let tanda = estado.destinatarios.slice(0, Math.min(pedidos, cupo));
   if (!tanda.length) {
     mostrarError({ message: 'Se acabó el cupo de hoy. Retoma mañana con el doble.' });
+    return;
+  }
+
+  /* La lista de bajas se relee y se aplica justo antes de mandar. Entre
+     que se armó el segmento y este clic pueden haber pasado días, y el
+     envío programado ya hacía esta comprobación; el manual no. */
+  estado.bajas = await mail.cargarBajas(db).catch(() => estado.bajas);
+  const fuera = tanda.filter((d) => estado.bajas.has(String(d.rbd))).length;
+  if (fuera) {
+    tanda = tanda.filter((d) => !estado.bajas.has(String(d.rbd)));
+    avisar(`${fuera} pidieron la baja desde que se armó el segmento; quedan fuera.`);
+  }
+  if (!tanda.length) {
+    mostrarError({ message: 'Todos los de esta tanda pidieron la baja.' });
     return;
   }
 
@@ -1917,8 +1976,14 @@ async function marcarContactados(destinatarios, campana) {
   for (let i = 0; i < destinatarios.length; i += 200) {
     const b = writeBatch(db);
     for (const d of destinatarios.slice(i, i + 200)) {
+      /* Sólo avanza a quien todavía no había sido contactado. Ponerlo a
+         todos hacía retroceder el embudo: un colegio en "propuesta" que
+         entraba en un segmento volvía a "contactado", y el panel dejaba
+         de contarlo donde estaba de verdad. */
+      const previo = String(d.estadoCrm || '');
+      const etapa = (!previo || previo === 'nuevo') ? { estadoCrm: 'contactado' } : {};
       b.set(doc(db, 'prospectos', String(d.rbd)), {
-        estadoCrm: 'contactado',
+        ...etapa,
         // La fecha es lo que impide que la campaña de la semana próxima
         // vuelva a escribirle a quien ya recibió este correo.
         ultimoContacto: serverTimestamp(),
@@ -2313,7 +2378,12 @@ function pintarProgramar() {
   }
 
   // Una campaña ya programada no admite elección: ya está decidida.
+  /* El radio es estado del DOM y sobrevive a cambiar de campaña: sin
+     reiniciarlo, marcar "Programado" en una y abrir otra dejaba la nueva
+     en modo programado, sin botón de enviar y con la fecha de la
+     anterior. Manda siempre el estado de la campaña abierta. */
   if (programada) luego.checked = true;
+  else if (c.__reciennacida) { ahora.checked = true; delete c.__reciennacida; }
   ahora.disabled = programada;
   luego.disabled = Boolean(impedimento) && !programada;
   $('opcion-luego').classList.toggle('apagada', luego.disabled);
@@ -2378,7 +2448,8 @@ function pintarResumenes() {
   $('resumen-disenio').textContent = `${plantilla} · ${c.tema === 'oscuro' ? 'oscuro' : 'claro'}`;
 
   const wa = $('c-whatsapp').value.trim();
-  const slots = ($('c-horarios').value || '').split('|').filter(Boolean).length;
+  const slots = ($('c-horarios').value || '').split(',').map((s) => s.trim())
+    .filter(Boolean).length;
   $('resumen-contacto').textContent = [
     wa ? 'WhatsApp' : 'sin WhatsApp',
     slots ? `${slots} horario${slots === 1 ? '' : 's'}` : 'sin horarios',
@@ -2438,8 +2509,18 @@ async function programar() {
   }
 
   await pintarTanda();
-  const pedidos = Number($('c-tanda').value) || mail.LIMITE_DIARIO;
-  const tanda = estado.destinatarios.slice(0, Math.min(pedidos, mail.LIMITE_DIARIO));
+  /* El campo puede venir en 0 cuando el cupo de hoy está agotado, y
+     `Number("0") || 450` daba 450: se ofrecía programar la tanda máxima
+     justo bajo el aviso rojo que decía que no quedaba cupo. El tope es
+     el escalón del calentamiento, no el límite duro. */
+  const escrito = Number($('c-tanda').value);
+  const tope = Math.min(estado.plan?.tope || mail.LIMITE_DIARIO, mail.LIMITE_DIARIO);
+  const pedidos = Number.isFinite(escrito) && escrito > 0 ? escrito : tope;
+  const tanda = estado.destinatarios.slice(0, Math.min(pedidos, tope));
+  if (!tanda.length) {
+    mostrarError({ message: 'No hay destinatarios para programar.' });
+    return;
+  }
   const restantes = estado.destinatarios.length - tanda.length;
 
   const momento = avisoMomento(cuando);
@@ -2629,6 +2710,7 @@ $('ag-despues').addEventListener('click', () => {
 });
 
 $('c-recalcular').addEventListener('click', () => {
+  if (bloqueadaPorProgramada()) return;
   const { lista, podas } = segmentoActual();
   estado.destinatarios = lista;
   estado.podas = podas;
@@ -2637,7 +2719,19 @@ $('c-recalcular').addEventListener('click', () => {
   resumenSegmento(); previsualizar();
 });
 
+/* Una campaña programada ya tiene sus mensajes redactados y esperando.
+   Guardar o recalcular encima reescribía sus destinatarios y descuadraba
+   lo que va a salir; el aviso pedía cancelar primero, pero nada lo
+   impedía. */
+function bloqueadaPorProgramada() {
+  if (estado.campanaActual?.estado !== 'programada') return false;
+  mostrarError({ message: 'La campaña está programada y sus correos ya están '
+    + 'redactados. Cancela la programación antes de cambiarla.' });
+  return true;
+}
+
 $('c-guardar').addEventListener('click', async () => {
+  if (bloqueadaPorProgramada()) return;
   const c = estado.campanaActual;
   Object.assign(c, {
     nombre: $('c-nombre').value.trim() || 'Sin nombre',
@@ -2651,7 +2745,6 @@ $('c-guardar').addEventListener('click', async () => {
     progreso('Borrador guardado.');
     avisar('Borrador guardado.');
     await pintarCampanas();
-    comprobarSeguimiento();
   } catch (e) { mostrarError(e); }
 });
 
@@ -2659,6 +2752,7 @@ $('c-guardar').addEventListener('click', async () => {
    va a llegar: en su cliente, con las variables resueltas y el remitente
    puesto. La vista previa del editor no muestra cómo lo trata Gmail. */
 $('c-prueba').addEventListener('click', async () => {
+  if (bloqueadaPorProgramada()) return;
   if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail primero.' }); return; }
   const ejemplo = estado.destinatarios[0];
   if (!ejemplo) { mostrarError({ message: 'El segmento no tiene destinatarios.' }); return; }
@@ -2706,6 +2800,9 @@ $('d-revisar').addEventListener('click', async () => {
 $('d-reanudar').addEventListener('click', async () => {
   const pendientes = await mail.listarDestinatarios(db, estado.campanaActual.id, true);
   estado.destinatarios = pendientes;
+  // Las exclusiones eran de otro segmento; arrastrarlas hacía que el
+  // resumen hablara de colegios que no tienen nada que ver con esta.
+  estado.podas = {};
   abrirEditor();
 });
 

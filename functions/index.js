@@ -97,6 +97,33 @@ async function darDeBaja(campanaId, rbd) {
   return true;
 }
 
+/* La baja se pregunta antes de hacerse.
+   Los escáneres antispam corporativos —los mismos que cargan el pixel al
+   recibir el correo— siguen todos los enlaces del mensaje. Con la baja
+   en un GET, el filtro del propio colegio daba de baja al colegio sin
+   que nadie lo pidiera, y la lista de exclusión no se puede deshacer
+   desde la app. Un formulario no lo envía ningún escáner.
+   El POST directo se mantiene intacto: es el que hace Gmail para la baja
+   en un clic (RFC 8058) y ahí el consentimiento ya lo dio el lector. */
+const PAGINA_CONFIRMAR = (accion) => `<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Dejar de recibir correos</title></head>
+<body style="margin:0;background:#eef1f5;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:460px;margin:14vh auto;background:#fff;border-radius:14px;padding:32px 34px">
+  <div style="height:5px;background:#e8443a;border-radius:3px;margin-bottom:22px"></div>
+  <h1 style="margin:0 0 10px;font-size:20px;color:#14345c">
+    ¿Dejamos de escribirle?</h1>
+  <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#333">
+    Su establecimiento no volverá a recibir correos nuestros. Es
+    permanente: no podemos deshacerlo desde acá.</p>
+  <form method="POST" action="${escapar(accion)}">
+    <button type="submit" style="background:#e8443a;color:#fff;border:0;
+      font-size:15px;font-weight:bold;padding:13px 22px;border-radius:9px;cursor:pointer">
+      Sí, darme de baja</button>
+  </form>
+  <p style="margin:22px 0 0;font-size:12px;color:#8a93a3">JUMP Math Chile · Santiago de Chile</p>
+</div></body></html>`;
+
 const PAGINA_BAJA = (ok) => `<!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${ok ? 'Baja registrada' : 'Enlace no válido'}</title></head>
@@ -199,6 +226,28 @@ const PAUSA_MS = 1400;
 const diaSantiago = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
+
+/* Quién pertenece al equipo. Las reglas ya lo exigen para escribir,
+   pero el servidor no puede apoyarse sólo en ellas: si una regla se
+   afloja por descuido, lo que está en juego es que esta función mande
+   correo firmado por la cuenta del equipo. Se comprueba en los dos
+   sitios a propósito. */
+async function esOperador(uid) {
+  if (!uid) return false;
+  const s = await db.doc(`operadores/${uid}`).get();
+  return s.exists;
+}
+
+/* El que llama, si es del equipo. Devuelve null cuando no lo es, para
+   que quien llama responda 401/403 sin repetir el trámite. */
+async function quienLlama(req) {
+  const cabecera = String(req.get('Authorization') || '');
+  const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
+  if (!idToken) return null;
+  const usuario = await getAuth().verifyIdToken(idToken).catch(() => null);
+  if (!usuario || usuario.email_verified !== true) return null;
+  return (await esOperador(usuario.uid)) ? usuario : null;
+}
 
 async function pedirToken(cuerpo) {
   const r = await fetch(OAUTH, {
@@ -334,14 +383,31 @@ async function enviarCampana(campana, token, hastaMs) {
     .where('estado', '==', 'pendiente').limit(500).get();
   // Sólo los que el navegador dejó redactados: el resto del segmento
   // queda para una tanda posterior y no debe salir hoy.
-  const cola = dest.docs.filter((d) => d.get('crudo')).slice(0, cupo.resto);
+  const listos = dest.docs.filter((d) => d.get('crudo'));
+  const cola = listos.slice(0, cupo.resto);
+  /* Que la cola se recorte no puede pasar en silencio. Si hoy sólo caben
+     50 de 200, los 150 restantes tienen que dejar la campaña en pie para
+     mañana: darla por enviada los condena a no salir nunca, porque la
+     consulta del reloj sólo mira las que siguen "programada". */
+  const truncada = cola.length < listos.length || dest.size >= 500;
 
   let enviados = 0;
   let errores = 0;
   let corte = '';
 
-  for (const d of cola) {
+  for (const [i, d] of cola.entries()) {
     if (Date.now() > hastaMs) { corte = 'tiempo'; break; }
+    /* Cada diez correos se vuelve a mirar la campaña. Sin esto, cancelar
+       o borrar durante el despacho no detenía nada —el bucle trabaja
+       sobre una foto de hace ocho minutos— y el diálogo de cancelar
+       prometía algo que no ocurría. */
+    if (i > 0 && i % 10 === 0) {
+      const ahora = await ref.get();
+      if (!ahora.exists || ahora.get('estado') !== 'programada') {
+        corte = 'cancelada';
+        break;
+      }
+    }
     const rbd = d.id;
     // Alguien pudo darse de baja entre el sábado y el lunes. Honrarlo
     // acá es la última oportunidad antes de que el correo salga.
@@ -350,6 +416,17 @@ async function enviarCampana(campana, token, hastaMs) {
       await d.ref.update({ estado: 'baja', error: 'dado de baja antes del envío' });
       continue;
     }
+
+    /* Se reserva ANTES de llamar a Gmail. Si la instancia muere entre el
+       envío y la marca, el destinatario queda en "enviando" y no vuelve
+       a la cola: ante la duda es mejor un correo que no salió —y se ve
+       en el detalle— que uno que llega dos veces a un director. */
+    try {
+      await d.ref.update({ estado: 'enviando', intentoEn: FieldValue.serverTimestamp() });
+    } catch {
+      continue;   // otro lo tomó, o ya no existe
+    }
+
     try {
       const res = await despachar(token, d.get('crudo'), d.get('threadId'));
       await d.ref.update({
@@ -361,13 +438,17 @@ async function enviarCampana(campana, token, hastaMs) {
         crudo: FieldValue.delete(),   // ya cumplió; ocupa 20 KB por fila
       });
       enviados += 1;
+      /* El contador del calentamiento nunca debe convertir un envío que
+         salió en un error: es un documento único con mucha contención, y
+         su fallo no dice nada sobre el correo, que ya está entregado. */
       await db.doc(`envios/${cupo.dia}`).set(
         { n: FieldValue.increment(1), actualizado: FieldValue.serverTimestamp() },
-        { merge: true });
+        { merge: true }).catch((e) => console.error('contador', e));
       await anotarContacto(rbd, campana.nombre, campana.uid);
     } catch (e) {
       const msg = String(e.message).slice(0, 200);
-      await d.ref.update({ estado: 'error', error: msg });
+      await d.ref.update({ estado: 'error', error: msg })
+        .catch(() => { /* si tampoco se puede marcar, queda en "enviando" */ });
       errores += 1;
       // Cuota agotada o permiso vencido no se arreglan insistiendo con
       // los que siguen: se detiene y se conserva lo ya enviado.
@@ -383,7 +464,9 @@ async function enviarCampana(campana, token, hastaMs) {
       actualizado: FieldValue.serverTimestamp(),
     });
   }
-  return { enviados, errores, corte, quedaron: cola.length - enviados - errores };
+  // Sin corte pero con cola recortada, queda trabajo para mañana.
+  if (!corte && truncada) corte = 'cupo';
+  return { enviados, errores, corte, quedaron: listos.length - enviados - errores };
 }
 
 /* Santiago corre funciones pero no Cloud Scheduler, así que el reloj
@@ -448,16 +531,49 @@ exports.correosProgramados = onSchedule({
     });
     if (!mia) continue;
 
+    /* Aunque las reglas ya lo impiden, el servidor lo vuelve a mirar: lo
+       que estaria en juego si una regla se aflojara es esta funcion
+       despachando el mensaje que un desconocido dejo en Firestore,
+       firmado con la cuenta del equipo. */
+    if (!(await esOperador(c.get('uid')))) {
+      await c.ref.update({
+        estado: 'error',
+        enviandoDesde: FieldValue.delete(),
+        errorProgramado: 'Creada por una cuenta que no es del equipo; no se envio.',
+      });
+      console.error('programadas: campana ajena', c.id, c.get('uid'));
+      continue;
+    }
+
     try {
       const r = await enviarCampana({ id: c.id, ...c.data() }, token, hasta);
-      // Con corte por tiempo o por cupo la campaña sigue programada y la
-      // corrida siguiente retoma donde quedó.
-      const termino = !r.corte || r.corte === 'cuenta';
-      await c.ref.update({
-        estado: termino ? 'enviada' : 'programada',
-        enviandoDesde: FieldValue.delete(),
-        ...(termino ? { enviadaEn: FieldValue.serverTimestamp() } : {}),
-      });
+      /* Cada corte deja un estado distinto, y la diferencia importa:
+         - tiempo o cupo: sigue programada y la corrida siguiente retoma;
+         - cuenta: Gmail rechazó (cuota o permiso). No es "enviada": hay
+           destinatarios sin salir y alguien tiene que enterarse;
+         - cancelada: alguien la detuvo mientras despachaba, y su
+           decisión manda sobre la nuestra: no se toca el estado. */
+      const destino = { tiempo: 'programada', cupo: 'programada', cuenta: 'error' }[r.corte]
+        || 'enviada';
+      if (r.corte !== 'cancelada') {
+        /* En transacción, porque durante los ocho minutos de despacho la
+           operadora pudo cancelar: escribir sin mirar dejaba la campaña
+           "programada" sin fecha, invisible para el reloj y bloqueada en
+           la app. Sólo se escribe si sigue siendo la que reclamamos. */
+        await db.runTransaction(async (tx) => {
+          const s = await tx.get(c.ref);
+          if (!s.exists || s.get('estado') !== 'programada') return;
+          tx.update(c.ref, {
+            estado: destino,
+            enviandoDesde: FieldValue.delete(),
+            ...(destino === 'enviada' ? { enviadaEn: FieldValue.serverTimestamp() } : {}),
+            ...(destino === 'error' ? {
+              errorProgramado: 'Gmail rechazó el envío (cuota diaria o permiso '
+                + `vencido). Quedaron ${r.quedaron} sin salir; revisa y reprograma.`,
+            } : {}),
+          });
+        });
+      }
       console.log(`programadas: ${c.id} desde ${correo}`, r);
     } catch (e) {
       await c.ref.update({
@@ -514,10 +630,8 @@ exports.seguimiento = onRequest({
     if (/^\/t\/autorizar/.test(ruta)) {
       if (req.method !== 'POST') { res.status(405).end(); return; }
       try {
-        const cabecera = String(req.get('Authorization') || '');
-        const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
-        if (!idToken) { res.status(401).json({ error: 'sin sesión' }); return; }
-        const usuario = await getAuth().verifyIdToken(idToken);
+        const usuario = await quienLlama(req);
+        if (!usuario) { res.status(403).json({ error: 'sin permiso' }); return; }
         const code = String(req.body?.code || '');
         if (!code) { res.status(400).json({ error: 'sin código' }); return; }
         const destino = String(req.body?.redirectUri || '');
@@ -550,16 +664,17 @@ exports.seguimiento = onRequest({
     if (/^\/t\/token/.test(ruta)) {
       if (req.method !== 'POST') { res.status(405).end(); return; }
       try {
-        const cabecera = String(req.get('Authorization') || '');
-        const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
-        if (!idToken) { res.status(401).json({ error: 'sin sesión' }); return; }
-        const usuario = await getAuth().verifyIdToken(idToken);
+        const usuario = await quienLlama(req);
+        if (!usuario) { res.status(403).json({ error: 'sin permiso' }); return; }
         const snap = await db.doc('secretos/gmail').get();
         if (!snap.exists) { res.status(404).json({ error: 'sin autorización guardada' }); return; }
 
-        const suyo = usuario.uid === snap.get('autorizadoPor');
-        const propia = String(usuario.email || '').toLowerCase()
-          === String(snap.get('correo') || '').toLowerCase();
+        /* Las dos comparaciones exigen valor: con la direccion guardada
+           vacia, '' === '' daba por buena a cualquiera. */
+        const guardado = String(snap.get('correo') || '').toLowerCase();
+        const mio = String(usuario.email || '').toLowerCase();
+        const suyo = Boolean(usuario.uid) && usuario.uid === snap.get('autorizadoPor');
+        const propia = Boolean(guardado) && Boolean(mio) && guardado === mio;
         if (!suyo && !propia) {
           res.status(403).json({ error: 'esta cuenta no puede enviar por el servidor' });
           return;
@@ -592,10 +707,10 @@ exports.seguimiento = onRequest({
     if (/^\/t\/desautorizar/.test(ruta)) {
       if (req.method !== 'POST') { res.status(405).end(); return; }
       try {
-        const cabecera = String(req.get('Authorization') || '');
-        const idToken = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : '';
-        if (!idToken) { res.status(401).json({ error: 'sin sesión' }); return; }
-        await getAuth().verifyIdToken(idToken);
+        // Antes bastaba una sesion valida: cualquiera que entrara podia
+        // dejar sin salida a la campana del lunes, en silencio.
+        const usuario = await quienLlama(req);
+        if (!usuario) { res.status(403).json({ error: 'sin permiso' }); return; }
         await db.doc('secretos/gmail').delete();
         // Las campañas que esperaban ya no van a salir: mejor decirlo
         // ahora que dejarlas en silencio hasta el lunes.
@@ -615,14 +730,30 @@ exports.seguimiento = onRequest({
     }
     const baja = ruta.match(/^\/t\/baja\/([^/]+)\/([^/?]+)/);
     if (baja) {
+      const [, campanaId, rbd] = baja;
+      if (!valido(campanaId) || !valido(rbd)) { res.status(404).end(); return; }
+
+      // Un GET solo pregunta: los escaneres antispam siguen enlaces, no
+      // envian formularios. Antes daban de baja al colegio solos.
+      if (req.method !== 'POST') {
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        res.set('Cache-Control', 'no-store, max-age=0');
+        res.status(200).send(PAGINA_CONFIRMAR(`/t/baja/${campanaId}/${rbd}`));
+        return;
+      }
+
       let ok = false;
       try {
-        ok = await darDeBaja(baja[1], baja[2]);
+        ok = await darDeBaja(campanaId, rbd);
       } catch (e) {
         console.error('baja', e);
       }
-      // Gmail hace el POST en segundo plano y sólo mira el código.
-      if (req.method === 'POST') { res.status(ok ? 200 : 404).end(); return; }
+      /* Gmail hace este POST en segundo plano (RFC 8058) y solo mira el
+         codigo; el del formulario viene de una persona y merece pagina. */
+      if (!String(req.get('accept') || '').includes('text/html')) {
+        res.status(ok ? 200 : 404).end();
+        return;
+      }
       res.set('Content-Type', 'text/html; charset=utf-8');
       res.status(ok ? 200 : 404).send(PAGINA_BAJA(ok));
       return;

@@ -15,9 +15,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Solo usuarios autenticados del equipo comercial.
+    // Solo el equipo comercial, y "equipo" es una lista explicita.
+    //
+    // Con "estar autenticado" bastaba tener una cuenta de Google para
+    // leer los 8.158 colegios con sus correos y telefonos, editarlos, y
+    // —lo mas caro— dejar una campana en estado "programada" con el
+    // mensaje ya redactado para que el servidor la despachara firmada
+    // con la cuenta de Gmail del equipo. La puerta de entrada era la
+    // pantalla de inicio de sesion, abierta a cualquiera.
+    //
+    // La lista vive en operadores/{uid} y no se puede escribir desde el
+    // navegador: se administra con firebase/operadores.mjs --admin.
     function autenticado() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/operadores/$(request.auth.uid));
+    }
+
+    // Quien esta en el equipo. Se puede leer para saber quien mas hay;
+    // escribir, solo el Admin SDK, o la lista se autoconcederia.
+    match /operadores/{uid} {
+      allow read: if autenticado();
+      allow write: if false;
     }
 
     // Campos que el equipo puede editar desde el CRM. El resto de la

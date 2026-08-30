@@ -16,7 +16,7 @@ import {
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField,
   query, orderBy, limit, where, writeBatch, serverTimestamp, increment,
-  documentId,
+  documentId, startAfter,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 const GMAIL_ENVIAR = 'https://www.googleapis.com/auth/gmail.send';
@@ -780,12 +780,23 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
     uid,
     creado: campana.creado || serverTimestamp(),
     actualizado: serverTimestamp(),
-    totales: campana.totales
-      || { destinatarios: destinatarios?.length || 0, enviados: 0, errores: 0,
-           respuestas: 0, aperturas: 0, clics: 0 },
+    /* Sólo el tamaño del segmento, y sólo esa clave. Escribir el objeto
+       `totales` entero lo rellenaba con la foto que el navegador tenía
+       al abrir el detalle: media hora después, las aperturas que el
+       pixel había ido sumando se perdían de una sentada. En Firestore
+       los mapas anidados se combinan clave a clave, así que nombrar una
+       sola deja el resto intacto. */
+    ...(destinatarios ? { totales: { destinatarios: destinatarios.length } } : {}),
   }, { merge: true });
 
-  if (destinatarios) {
+  /* Los destinatarios sólo se (re)escriben mientras la campaña es un
+     borrador. Hacerlo sobre una ya despachada devolvía a 'pendiente' a
+     quien ya había recibido el correo y ponía sus aperturas a cero: el
+     detalle mostraba "200 pendientes", aparecía "Reanudar envío", y el
+     siguiente clic mandaba doscientos correos repetidos a directores que
+     ya los tenían. Una campaña en marcha es historia, no un formulario. */
+  const esBorrador = !campana.estado || campana.estado === 'borrador';
+  if (destinatarios && esBorrador) {
     // 500 operaciones por lote es el máximo de Firestore.
     for (let i = 0; i < destinatarios.length; i += 450) {
       const b = writeBatch(db);
@@ -813,11 +824,26 @@ export const primerCorreo = (campo) => String(campo || '')
   .split(';').map((s) => s.trim()).filter(Boolean)[0] || '';
 
 export async function listarDestinatarios(db, campanaId, soloPendientes = false) {
-  const partes = [collection(db, 'campanas', campanaId, 'destinatarios')];
-  if (soloPendientes) partes.push(where('estado', '==', 'pendiente'));
-  partes.push(limit(2000));
-  const s = await getDocs(query(...partes));
-  return s.docs.map((d) => ({ id: d.id, ...d.data() }));
+  /* Por páginas y en orden de id. Con un tope plano de 2.000 y sin
+     ordenar, una campaña más grande devolvía siempre los mismos: los ids
+     son el RBD como texto, así que "10001" va antes que "9185" y los
+     colegios con RBD alto no existían para nadie —ni sus respuestas se
+     detectaban, ni sus rebotes, ni contaban en los KPI del detalle. */
+  const salida = [];
+  let desde = null;
+  for (let vuelta = 0; vuelta < 30; vuelta += 1) {
+    const partes = [collection(db, 'campanas', campanaId, 'destinatarios')];
+    if (soloPendientes) partes.push(where('estado', '==', 'pendiente'));
+    partes.push(orderBy(documentId()));
+    if (desde) partes.push(startAfter(desde));
+    partes.push(limit(500));
+    const s = await getDocs(query(...partes));
+    if (s.empty) break;
+    salida.push(...s.docs.map((d) => ({ id: d.id, ...d.data() })));
+    if (s.size < 500) break;
+    desde = s.docs[s.docs.length - 1];
+  }
+  return salida;
 }
 
 /**
@@ -947,9 +973,15 @@ async function marcar(db, campanaId, rbd, datos) {
    primer día termina en spam o suspendida, y con ella se quema la base
    entera. El contador por día es lo que permite subir por escalones y
    saber cuánto queda de cupo hoy, aunque se envíe desde otro equipo. */
+/* El día se cuenta en Chile, no en la hora del equipo. El servidor usa
+   America/Santiago para el mismo contador, y con un portátil en otro huso
+   —o en UTC— los dos escribían documentos distintos: los envíos de la
+   tarde caían en el día siguiente mientras el reloj creía que el cupo
+   seguía entero, que es justo como se queman 450 correos en una tarde. */
 export function diaHoy(d = new Date()) {
-  const dos = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
 }
 
 async function contarEnvio(db) {
@@ -1015,6 +1047,22 @@ export async function enviarPrueba(campana, prospecto, ctx) {
  * sabe si contestaron. Un hilo con más de un mensaje, o con un mensaje
  * que no es nuestro, es una respuesta.
  */
+/* Qué cuenta como pedir la baja.
+   "Baja" a secas es palabra corriente en un colegio —"matrícula baja",
+   "asistencia baja", "dimos de baja a dos alumnos"— y con el patrón
+   antiguo bastaba para excluir a ese colegio de por vida: la lista de
+   bajas no se puede borrar desde la app, y además la respuesta no
+   llegaba a la bandeja de nadie. Ante la duda se trata como respuesta,
+   que sólo cuesta leerla; una baja falsa cuesta el lead entero. */
+const PIDE_BAJA = [
+  /\bd(?:ar|arme|arnos|e)\s+de\s+baja\b/i,
+  /\bdesuscrib|\bdesinscrib|\bunsubscribe\b/i,
+  /\bno\s+(?:me|nos)\s+(?:vuelvan?\s+a\s+)?(?:escrib|contact|env[íi])/i,
+  /\bno\s+(?:deseo|deseamos|quiero|queremos)\s+(?:recibir|seguir recibiendo)/i,
+  /\bretir(?:e|en)me\s+de\s+(?:su|la)\s+lista\b/i,
+  /^\s*baja\s*$/i,   // la palabra sola: es exactamente lo que pide el pie
+];
+
 export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
   /* Los ya resueltos quedan fuera: un rebote o una baja que se vuelve a
      mirar se volvería a contar, y cada pasada inflaría los totales de la
@@ -1044,8 +1092,8 @@ export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
         /* El resumen del mensaje viene con la metadata, sin necesidad del
            permiso de lectura completa: alcanza para reconocer una baja
            pedida por respuesta y honrarla sin trabajo manual. */
-        const pidioBaja = entrantes.some((m) => /\bbaja\b|desuscribir|no.{0,12}(escrib|contact)/i
-          .test(String(m.snippet || '')));
+        const pidioBaja = entrantes.some((m) => PIDE_BAJA
+          .some((r) => r.test(String(m.snippet || ''))));
         await marcar(db, campanaId, d.rbd, {
           estado: rebote ? 'rebotado' : pidioBaja ? 'baja' : 'respondido',
           respondidoEn: serverTimestamp(),

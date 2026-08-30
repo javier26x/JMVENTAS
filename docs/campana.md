@@ -5,6 +5,31 @@ mecánico; esto es lo que hay que decidir y vigilar alrededor.
 
 ---
 
+## 0. Quién puede entrar (hazlo antes de desplegar)
+
+Hasta ahora bastaba tener una cuenta de Google para entrar a la app. Eso
+significaba que cualquiera que diera con la dirección podía leer los 8.158
+colegios con sus correos y teléfonos, y —lo más caro— dejar una campaña
+«programada» en la base para que el servidor la despachara **firmada con la
+cuenta de Gmail del equipo**.
+
+Ahora hay una lista explícita. Da de alta a las personas del equipo **antes** de
+desplegar las reglas nuevas, o nadie podrá entrar, tú incluido:
+
+```bash
+# 1. Tu uid está en la consola de Firebase → Authentication → Users
+node firebase/operadores.mjs --admin --alta <tu-uid> "Javier"
+node firebase/operadores.mjs --admin --listar
+
+# 2. Recién ahora, las reglas
+npx firebase-tools deploy --only firestore --project jmventas-aab3c
+```
+
+Si alguien ya entró alguna vez, sirve su correo en vez del uid. Para quitar a
+alguien: `--baja <uid|correo>`. La lista no se puede tocar desde el navegador.
+
+---
+
 ## 1. Antes del primer envío
 
 Cuatro cosas que no dependen del software y que, si faltan, hacen que la
