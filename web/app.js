@@ -1836,6 +1836,11 @@ function progreso(txt) {
 
 async function enviar() {
   const c = estado.campanaActual;
+  if (c.estado === 'programada') {
+    mostrarError({ message: 'Esta campaña ya está programada y saldrá sola. Si '
+      + 'quieres mandarla ahora, cancela primero la programación.' });
+    return;
+  }
   if (!mail.gmailConectado()) { mostrarError({ message: 'Conecta Gmail antes de enviar.' }); return; }
   if (!estado.destinatarios.length) { mostrarError({ message: 'El segmento no tiene destinatarios con correo.' }); return; }
 
@@ -1851,7 +1856,11 @@ async function enviar() {
 
   const momento = avisoMomento();
   const restantes = estado.destinatarios.length - tanda.length;
-  if (!confirm(`Se enviarán ${tanda.length} correos desde ${mail.gmailCorreo()}.\n`
+  // El remitente puede venir del permiso guardado en el servidor: sin
+  // este respaldo la confirmación decía "se enviarán 7 correos desde ."
+  const desde = mail.gmailCorreo() || estado.programado?.autorizacion?.correo
+    || 'tu cuenta conectada';
+  if (!confirm(`Se enviarán ${tanda.length} correos desde ${desde}.\n`
     + (restantes ? `Quedan ${restantes} para las próximas tandas.\n` : '')
     + ($('c-cuerpo-b').value.trim()
       ? 'La mitad recibirá la variante B.\n' : '')
@@ -2229,6 +2238,17 @@ function pintarProgramar() {
   const autorizado = Boolean(p.autorizacion);
   const cuenta = p.autorizacion?.correo || '';
   const quien = cuenta || 'la cuenta autorizada';
+
+  /* Una campaña que ya está programada no puede tener al lado un botón
+     que la mande ahora: los correos ya están redactados y esperando, y
+     pulsarlo un sábado los suelta un sábado. Para enviar ya, primero se
+     cancela la programación, que es una decisión consciente. */
+  const enviarYa = $('c-enviar');
+  const programada = c.estado === 'programada';
+  enviarYa.disabled = programada;
+  enviarYa.title = programada
+    ? 'La campaña está programada. Cancela la programación para enviarla ahora.'
+    : '';
   const dias = p.autorizacion?.desde
     ? Math.floor((Date.now() - p.autorizacion.desde) / 864e5) : null;
 
@@ -2308,6 +2328,12 @@ async function autorizarProgramado() {
     const r = await mail.autorizarProgramado(auth, estado.programado.clientId,
       { leer: mail.puedeLeer() });
     estado.programado.autorizacion = { correo: r.correo || '', desde: Date.now() };
+    /* La sesión del navegador tiene que salir del permiso recién
+       guardado. Sin esto se queda con la anterior —o sin ninguna— y el
+       envío manual termina diciendo "se enviarán 7 correos desde ." */
+    await mail.conectarPorServidor(auth)
+      .then((s) => pintarEstadoGmail(s.correo, s.leer))
+      .catch(() => { /* el botón de conectar sigue estando */ });
     avisar(`Envío automático autorizado${r.correo ? ` para ${r.correo}` : ''}.`);
     pintarProgramar();
   } catch (e) { mostrarError(e); } finally { b.disabled = false; }
