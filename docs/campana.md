@@ -117,7 +117,33 @@ promedio”) contra aspiración (“colegios como el suyo subieron X puntos”).
 
 ---
 
-## 6. Cuando contestan
+## 6. La bandeja "Hoy"
+
+Es la primera vista que hay que abrir cada mañana. Junta las cuatro cosas
+que se pueden hacer ahora:
+
+- **Respondieron y esperan.** Se llena solo al pulsar "Revisar respuestas".
+  El número rojo del menú lateral cuenta a la gente que está esperando.
+- **Próximos pasos de hoy.** Lo que se comprometió en la ficha de cada
+  colegio y ya vence. Si está vacío no es que no haya trabajo: es que no se
+  anotó.
+- **Abrieron y no contestaron.** Dos aperturas o más sin respuesta. Llamar
+  acá convierte más barato que cualquier envío nuevo.
+- **Campañas que tocan seguimiento.** Enviadas hace más de tres días con
+  gente que no ha contestado.
+
+Cada nombre abre la **ficha del colegio**: todos sus datos, sus contactos,
+el estado, el responsable, el próximo paso con fecha, las notas y el
+historial completo —correos enviados, respuestas, llamadas, cambios de
+estado—. Lo que se registre ahí lo ve el resto del equipo.
+
+**La regla que sostiene todo esto:** cada vez que se cierra una
+conversación, se deja el próximo paso con fecha. Sin eso, la bandeja de
+mañana amanece vacía y el trabajo vuelve a vivir en la memoria de alguien.
+
+---
+
+## 7. Cuando contestan
 
 **Responder en menos de 2 horas hábiles.** Objetivo único de la respuesta:
 fijar día y hora. No adjuntar una propuesta, no explicar el método por
@@ -136,7 +162,7 @@ mano — la app excluye por RBD y de forma permanente.
 
 ---
 
-## 7. Pendientes conocidos
+## 8. Pendientes conocidos
 
 - [ ] Confirmar Registro ATE.
 - [ ] Dominio propio en Google Workspace para el remitente.

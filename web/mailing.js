@@ -846,7 +846,7 @@ export async function enviarPrueba(campana, prospecto, ctx) {
  * sabe si contestaron. Un hilo con más de un mensaje, o con un mensaje
  * que no es nuestro, es una respuesta.
  */
-export async function revisarRespuestas(db, campanaId, alAvanzar) {
+export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
   const dest = (await listarDestinatarios(db, campanaId))
     .filter((d) => d.threadId && d.estado !== 'respondido');
   let respuestas = 0;
@@ -884,6 +884,16 @@ export async function revisarRespuestas(db, campanaId, alAvanzar) {
             email: d.email, campanaId, motivo: rebote ? 'rebote' : 'pidio baja',
           });
         }
+        /* Una respuesta que sólo se marca dentro de la campaña se pierde:
+           el prospecto seguiría figurando como "contactado" y nadie
+           sabría que hay alguien esperando al otro lado. Acá es donde el
+           ciclo pasa de campaña a gestión comercial. */
+        if (!rebote && !pidioBaja) {
+          await avanzarProspecto(db, d.rbd, uid, {
+            estadoCrm: 'respondio',
+            respondioEn: serverTimestamp(),
+          }, `Respondió el correo de la campaña`);
+        }
         if (rebote) rebotes += 1;
         else if (pidioBaja) bajas += 1;
         else respuestas += 1;
@@ -903,6 +913,21 @@ export async function revisarRespuestas(db, campanaId, alAvanzar) {
     });
   }
   return { respuestas, rebotes, bajas, revisados: dest.length };
+}
+
+/* Mueve el prospecto y deja la huella en la bitácora. Los dos van
+   juntos a propósito: un estado que cambia sin decir por qué obliga a
+   reconstruir la historia de memoria. */
+async function avanzarProspecto(db, rbd, uid, campos, texto) {
+  try {
+    await setDoc(doc(db, 'prospectos', String(rbd)),
+      { ...campos, actualizado: serverTimestamp() }, { merge: true });
+    if (uid) {
+      await setDoc(doc(collection(db, 'actividad')), {
+        rbd: String(rbd), tipo: 'respuesta', texto, uid, creado: serverTimestamp(),
+      });
+    }
+  } catch { /* la gestión no debe hacer fallar la revisión del buzón */ }
 }
 
 // ---------- lista de exclusión ----------

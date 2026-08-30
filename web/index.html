@@ -27,6 +27,13 @@
     <div class="marca">JUMP&nbsp;Math <span>Chile</span></div>
 
     <div class="grupo">
+      <div class="grupo-tit">Trabajo</div>
+      <button class="nav" data-vista="hoy">
+        <span class="ic">📌</span> Hoy <em id="n-hoy"></em>
+      </button>
+    </div>
+
+    <div class="grupo">
       <div class="grupo-tit">Prospección</div>
       <button class="nav" data-vista="panel">
         <span class="ic">📊</span> Panel <em></em>
@@ -71,6 +78,11 @@
     </header>
 
     <div id="error" class="error oculto"></div>
+
+    <!-- ============ HOY: la bandeja de trabajo ============ -->
+    <section id="vista-hoy" class="oculto">
+      <div class="pilas" id="pilas-hoy"></div>
+    </section>
 
     <!-- ============ PANEL ============ -->
     <section id="vista-panel" class="oculto">
@@ -137,6 +149,7 @@
             <option value="nuevo">Nuevo</option>
             <option value="contacto_ok">Con contacto</option>
             <option value="contactado">Contactado</option>
+            <option value="respondio">Respondió</option>
             <option value="reunion">Reunión agendada</option>
             <option value="propuesta">Propuesta enviada</option>
             <option value="ganado">Ganado</option>
@@ -196,7 +209,10 @@
           <tbody id="cuerpo"></tbody>
         </table>
         <div id="cargando" class="cargando">Cargando…</div>
-        <div id="vacio" class="vacio oculto">Sin resultados para estos filtros.</div>
+        <div id="vacio" class="vacio oculto">
+          <p>Ningún colegio cumple estos filtros.</p>
+          <button class="fantasma" id="vacio-limpiar">Quitar los filtros</button>
+        </div>
       </div>
 
       <div class="pie">
@@ -407,6 +423,71 @@
       </div>
     </section>
   </main>
+
+  <!-- ============ FICHA DEL COLEGIO ============ -->
+  <div id="velo" class="velo oculto"></div>
+  <aside id="ficha" class="ficha oculto" aria-hidden="true" aria-label="Ficha del establecimiento">
+    <header class="ficha-cab">
+      <div>
+        <h2 id="ficha-nombre">—</h2>
+        <p class="sub" id="ficha-sub"></p>
+      </div>
+      <button class="fantasma" id="ficha-cerrar" aria-label="Cerrar ficha">✕</button>
+    </header>
+
+    <div class="ficha-cuerpo">
+      <div id="ficha-datos" class="ficha-datos"></div>
+      <div id="ficha-contacto" class="ficha-contacto"></div>
+
+      <section class="ficha-bloque">
+        <h3>Gestión</h3>
+        <div class="ficha-rejilla">
+          <label><span class="etq">Estado <button type="button" class="ayuda" data-ayuda="ficha-estado" aria-label="Qué significa">?</button></span>
+            <select id="ficha-estado"></select>
+          </label>
+          <label>Responsable
+            <input type="text" id="ficha-responsable" placeholder="Quién lo lleva" autocomplete="off">
+          </label>
+        </div>
+        <div class="ficha-rejilla">
+          <label><span class="etq">Próximo paso <button type="button" class="ayuda" data-ayuda="ficha-paso" aria-label="Qué significa">?</button></span>
+            <input type="text" id="ficha-paso" placeholder="Llamar para confirmar la reunión" autocomplete="off">
+          </label>
+          <label>Cuándo
+            <input type="date" id="ficha-paso-fecha">
+          </label>
+        </div>
+        <label>Notas
+          <textarea id="ficha-notas" rows="4" placeholder="Lo que hay que recordar de este colegio."></textarea>
+        </label>
+        <div class="fila-botones">
+          <button class="primario" id="ficha-guardar">Guardar</button>
+          <span class="sub" id="ficha-guardado"></span>
+        </div>
+      </section>
+
+      <section class="ficha-bloque">
+        <h3>Registrar en el historial <button type="button" class="ayuda" data-ayuda="ficha-registrar" aria-label="Qué significa">?</button></h3>
+        <div class="ficha-tipos" id="ficha-tipos">
+          <button data-tipo="llamada" aria-pressed="true">Llamada</button>
+          <button data-tipo="reunion">Reunión</button>
+          <button data-tipo="propuesta">Propuesta</button>
+          <button data-tipo="nota">Nota</button>
+        </div>
+        <label class="oculta-etiqueta">Qué pasó
+          <input type="text" id="ficha-texto" placeholder="Qué pasó, en una línea" autocomplete="off">
+        </label>
+        <div class="fila-botones">
+          <button id="ficha-registrar">Registrar</button>
+        </div>
+      </section>
+
+      <section class="ficha-bloque">
+        <h3>Historial <button type="button" class="ayuda" data-ayuda="ficha-historial" aria-label="Qué significa">?</button></h3>
+        <ol class="historial" id="ficha-historial"></ol>
+      </section>
+    </div>
+  </aside>
 </div>
 
 <script type="module" src="app.js"></script>

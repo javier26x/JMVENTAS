@@ -27,7 +27,8 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['estadoCrm', 'email', 'telefono', 'web', 'contacto',
                   'contactoFuente', 'notas', 'proximoPaso', 'responsable',
-                  'actualizado', 'ultimoContacto']);
+                  'actualizado', 'ultimoContacto', 'proximoPasoEn',
+                  'respondioEn', 'motivoCierre']);
     }
 
     match /prospectos/{rbd} {

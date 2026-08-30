@@ -12,6 +12,7 @@ import {
 import {
   getFirestore, collection, doc, getDocs, getDoc, query, where,
   orderBy, limit, startAfter, serverTimestamp, setDoc, getCountFromServer,
+  writeBatch,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 import * as mail from './mailing.js';
@@ -49,10 +50,15 @@ const normalizar = (s) => String(s ?? '')
   .normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const fecha = (t) => (t?.toDate ? t.toDate().toLocaleDateString('es-CL') : '—');
 
-const ESTADOS = ['nuevo', 'contactado', 'reunion', 'propuesta', 'ganado', 'descartado'];
+/* "respondio" se gana solo, al detectar la respuesta en el buzón: es el
+   escalón que separa un envío de una conversación, y el que decide qué
+   aparece mañana en la bandeja de trabajo. */
+const ESTADOS = ['nuevo', 'contactado', 'respondio', 'reunion', 'propuesta',
+  'ganado', 'descartado'];
 const ETIQUETA_ESTADO = {
-  nuevo: 'Nuevo', contactado: 'Contactado', reunion: 'Reunión agendada',
-  propuesta: 'Propuesta enviada', ganado: 'Ganado', descartado: 'Descartado',
+  nuevo: 'Nuevo', contactado: 'Contactado', respondio: 'Respondió',
+  reunion: 'Reunión agendada', propuesta: 'Propuesta enviada',
+  ganado: 'Ganado', descartado: 'Descartado',
   sin_web: 'Sin web', web_sin_mail: 'Web sin correo', contacto_ok: 'Contacto OK',
 };
 
@@ -60,6 +66,7 @@ const LISTADOS = ['oportunidades', 'prospectos', 'cuentas', 'redes'];
 const PAGINADAS = ['oportunidades', 'prospectos'];
 
 const TITULOS = {
+  hoy: ['Hoy', 'Lo que hay que atender ahora: quién respondió, qué se prometió y a quién llamar.'],
   panel: ['Panel', 'Cifras de toda la base, contadas en el servidor — no de la página cargada.'],
   oportunidades: ['Oportunidades', 'Colegios con problema de matemática documentado y posibilidad real de cierre.'],
   prospectos: ['Prospectos', 'Los 7.808 establecimientos con educación básica regular.'],
@@ -165,6 +172,24 @@ function mostrarError(e) {
   caja.classList.remove('oculto');
 }
 const limpiarError = () => $('error').classList.add('oculto');
+
+/* Un "guardado" no es un error, y sacarlo por la caja roja enseña a
+   ignorarla. Los avisos de que algo salió bien pasan y se van solos. */
+let avisoTemporizador;
+function avisar(texto) {
+  let caja = $('aviso-flotante');
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.id = 'aviso-flotante';
+    caja.className = 'aviso-flotante';
+    caja.setAttribute('role', 'status');
+    document.body.appendChild(caja);
+  }
+  caja.textContent = texto;
+  caja.classList.add('visible');
+  clearTimeout(avisoTemporizador);
+  avisoTemporizador = setTimeout(() => caja.classList.remove('visible'), 3200);
+}
 
 // ---------- carga de listados ----------
 async function cargarFijos() {
@@ -503,8 +528,8 @@ async function cargarPanel() {
   $('kpis-panel').innerHTML = '';
   try {
     const total = estado.meta?.prospectos || 7808;
-    const ESTADOS_PANEL = ['nuevo', 'contacto_ok', 'contactado', 'reunion',
-      'propuesta', 'ganado', 'descartado'];
+    const ESTADOS_PANEL = ['nuevo', 'contacto_ok', 'contactado', 'respondio',
+      'reunion', 'propuesta', 'ganado', 'descartado'];
 
     const [porEstado, dolores, tiers, sinAte] = await Promise.all([
       Promise.all(ESTADOS_PANEL.map((e) => contarProspectos(where('estadoCrm', '==', e)))),
@@ -618,11 +643,313 @@ function irA(vista) {
   $('subtitulo').textContent = s;
 
   $('vista-listado').classList.toggle('oculto', !LISTADOS.includes(vista));
+  $('vista-hoy').classList.toggle('oculto', vista !== 'hoy');
   $('vista-panel').classList.toggle('oculto', vista !== 'panel');
   $('vista-campanas').classList.toggle('oculto', vista !== 'campanas');
   $('vista-editor').classList.add('oculto');
   $('vista-detalle').classList.add('oculto');
   actualizarAcciones();
+}
+
+// ============================================================
+// Hoy — la bandeja de trabajo
+//
+// El resto de la app responde "a quién le escribo". Esta responde la
+// pregunta que viene después y que hasta ahora no contestaba nadie: qué
+// hay que hacer ahora, con quién, y por qué. Sin esto, una respuesta
+// puede quedarse una semana sin que nadie se entere.
+// ============================================================
+const hoyISO = () => mail.diaHoy();
+
+/* Una fecha en crudo obliga a calcular mentalmente si ya pasó. La app
+   sabe qué día es: que lo diga ella. */
+const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function cuandoPaso(iso) {
+  if (!iso) return 'sin fecha';
+  const dias = Math.round((new Date(`${iso}T00:00`) - new Date(`${hoyISO()}T00:00`)) / 864e5);
+  const [, m, d] = iso.split('-');
+  const legible = `${Number(d)} ${MES_CORTO[Number(m) - 1] || ''}`;
+  if (dias === 0) return 'vence hoy';
+  if (dias === -1) return 'venció ayer';
+  if (dias < -1) return `atrasado ${Math.abs(dias)} días · ${legible}`;
+  return legible;
+}
+
+/** Hace cuánto pasó algo, en palabras. */
+function desdeEntonces(t) {
+  const ms = t?.toMillis?.();
+  if (!ms) return '';
+  const dias = Math.floor((Date.now() - ms) / 864e5);
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'ayer';
+  return `hace ${dias} días`;
+}
+
+/* El número del menú se cuenta en el servidor: sirve para que, al entrar,
+   se vea que hay gente esperando sin tener que abrir la vista. */
+async function contarHoy() {
+  try {
+    const [r, p] = await Promise.all([
+      getCountFromServer(query(collection(db, 'prospectos'),
+        where('estadoCrm', '==', 'respondio'))),
+      getCountFromServer(query(collection(db, 'prospectos'),
+        where('proximoPasoEn', '<=', hoyISO()))),
+    ]);
+    const n = r.data().count + p.data().count;
+    $('n-hoy').textContent = n ? numero(n) : '';
+    if (n) $('n-hoy').classList.add('urgente');
+  } catch { /* sin permisos o sin índice: el contador es prescindible */ }
+}
+
+async function cargarHoy() {
+  const caja = $('pilas-hoy');
+  caja.innerHTML = '<div class="cargando">Revisando…</div>';
+  try {
+    const [respondieron, pendientes, calientes] = await Promise.all([
+      getDocs(query(collection(db, 'prospectos'),
+        where('estadoCrm', '==', 'respondio'), limit(60))),
+      getDocs(query(collection(db, 'prospectos'),
+        where('proximoPasoEn', '<=', hoyISO()), orderBy('proximoPasoEn'), limit(60))),
+      getDocs(query(collection(db, 'prospectos'),
+        where('aperturasCorreo', '>=', 2), orderBy('aperturasCorreo', 'desc'), limit(60))),
+    ]);
+    const filas = (s) => s.docs.map((d) => ({ id: d.id, ...d.data() }));
+    /* Quien ya respondió o está más adelante en el embudo no es un
+       "caliente": es un caso en curso, y mezclarlos haría que la lista
+       de llamadas repita trabajo hecho. */
+    const enCurso = ['respondio', 'reunion', 'propuesta', 'ganado', 'descartado'];
+    const tibios = filas(calientes).filter((p) => !enCurso.includes(p.estadoCrm)).slice(0, 20);
+
+    estado.hoy = {
+      respondieron: filas(respondieron),
+      pendientes: filas(pendientes),
+      calientes: tibios,
+      seguimientos: campanasQueTocanSeguimiento(),
+    };
+    pintarHoy();
+  } catch (e) {
+    caja.innerHTML = '';
+    mostrarError(e);
+  }
+}
+
+/* Un correo sin respuesta a los tres días no está rechazado: está
+   sepultado. El recordatorio es la acción de mayor retorno de toda la
+   operación, y la más fácil de olvidar. */
+const DIAS_SEGUIMIENTO = 3;
+
+function campanasQueTocanSeguimiento() {
+  const limite = Date.now() - DIAS_SEGUIMIENTO * 864e5;
+  const conSeguimiento = new Set(estado.campanas.map((c) => c.seguimientoDe).filter(Boolean));
+  return estado.campanas.filter((c) => {
+    if (c.estado !== 'enviada' || c.seguimientoDe || conSeguimiento.has(c.id)) return false;
+    const cuando = c.actualizado?.toMillis?.() || c.creado?.toMillis?.() || 0;
+    const t = c.totales || {};
+    return cuando < limite && (t.enviados || 0) > (t.respuestas || 0);
+  });
+}
+
+function pintarHoy() {
+  const h = estado.hoy || {};
+  const total = (h.respondieron?.length || 0) + (h.pendientes?.length || 0);
+  $('n-hoy').textContent = total ? numero(total) : '';
+  $('n-hoy').classList.toggle('urgente', total > 0);
+
+  const ficha = (p, extra) => `<li>
+      <button class="hoy-fila" data-ficha="${esc(p.id)}">
+        <span class="nombre">${esc(p.establecimiento || p.id)}</span>
+        <span class="sub">${esc(p.comuna || '')}${extra ? ` · ${extra}` : ''}</span>
+      </button></li>`;
+
+  const pilas = [
+    {
+      t: 'Respondieron y esperan', c: 'urgente', a: 'hoy-respondieron',
+      d: 'Contestaron el correo y nadie los ha movido todavía. Responder en menos de dos horas hábiles es lo que separa una reunión de un correo perdido.',
+      items: (h.respondieron || []).map((p) => ficha(p,
+        `respondió ${desdeEntonces(p.respondioEn) || 'hace poco'}`)),
+      vacio: 'Ninguna respuesta pendiente. Cuando alguien conteste, aparece acá.',
+    },
+    {
+      t: 'Próximos pasos de hoy', c: 'aviso', a: 'hoy-pendientes',
+      d: 'Lo que quedó comprometido en la ficha de cada colegio, y ya vence.',
+      items: (h.pendientes || []).map((p) => ficha(p,
+        `${esc(p.proximoPaso || 'sin descripción')} · ${esc(cuandoPaso(p.proximoPasoEn))}`)),
+      vacio: 'Nada agendado para hoy. Los próximos pasos se fijan en la ficha del colegio.',
+    },
+    {
+      t: 'Abrieron y no contestaron', c: '', a: 'hoy-calientes',
+      d: 'Dos aperturas o más sin respuesta: interesa, pero no se atrevió a escribir. Es la lista de llamadas del día.',
+      items: (h.calientes || []).map((p) => ficha(p, `${numero(p.aperturasCorreo)} aperturas`)),
+      vacio: 'Todavía no hay aperturas repetidas. Requiere campañas con seguimiento activado.',
+    },
+    {
+      t: 'Campañas que tocan seguimiento', c: '', a: 'hoy-seguimientos',
+      d: `Enviadas hace más de ${DIAS_SEGUIMIENTO} días con gente que no ha contestado.`,
+      items: (h.seguimientos || []).map((c) => `<li>
+        <button class="hoy-fila" data-campana="${esc(c.id)}">
+          <span class="nombre">${esc(c.nombre)}</span>
+          <span class="sub">${numero((c.totales?.enviados || 0) - (c.totales?.respuestas || 0))} sin responder</span>
+        </button></li>`),
+      vacio: 'Ninguna campaña pide recordatorio.',
+    },
+  ];
+
+  $('pilas-hoy').innerHTML = pilas.map((p) => `
+    <section class="pila ${p.c}">
+      <h3>${esc(p.t)}${ay(p.a)} <span class="cuenta">${p.items.length ? numero(p.items.length) : ''}</span></h3>
+      <p class="sub">${esc(p.d)}</p>
+      ${p.items.length ? `<ol class="hoy-lista">${p.items.join('')}</ol>`
+    : `<p class="vacio-pila">${esc(p.vacio)}</p>`}
+    </section>`).join('');
+}
+
+// ============================================================
+// Ficha del establecimiento
+//
+// El dato de un colegio vivía repartido entre la tabla de prospectos y
+// los destinatarios de cada campaña, sin ningún lugar donde juntarlo.
+// Acá se ve todo lo que se sabe y todo lo que ha pasado, y es donde se
+// escribe lo único que la máquina no puede saber: qué se acordó.
+// ============================================================
+const TIPO_ACTIVIDAD = {
+  envio: ['✉', 'Correo'], respuesta: ['↩', 'Respuesta'], llamada: ['☎', 'Llamada'],
+  reunion: ['👥', 'Reunión'], propuesta: ['📄', 'Propuesta'], nota: ['✎', 'Nota'],
+  estado: ['→', 'Estado'],
+};
+
+async function abrirFicha(id) {
+  const ficha = $('ficha');
+  ficha.classList.remove('oculto');
+  ficha.setAttribute('aria-hidden', 'false');
+  $('velo').classList.remove('oculto');
+  $('ficha-nombre').textContent = 'Cargando…';
+  $('ficha-datos').innerHTML = '';
+  $('ficha-historial').innerHTML = '';
+  estado.fichaId = id;
+
+  try {
+    const d = await getDoc(doc(db, 'prospectos', String(id)));
+    if (!d.exists()) { mostrarError({ message: 'No se encontró ese establecimiento.' }); return; }
+    const p = { id: d.id, ...d.data() };
+    estado.ficha = p;
+    pintarFicha(p);
+    await cargarHistorial(id);
+    $('ficha-cerrar').focus();
+  } catch (e) { mostrarError(e); }
+}
+
+function cerrarFicha() {
+  $('ficha').classList.add('oculto');
+  $('ficha').setAttribute('aria-hidden', 'true');
+  $('velo').classList.add('oculto');
+  estado.fichaId = null;
+}
+
+function pintarFicha(p) {
+  $('ficha-nombre').textContent = mail.titulo(p.establecimiento || p.id);
+  $('ficha-sub').textContent = [`RBD ${p.id}`, mail.titulo(p.comuna || ''),
+    mail.titulo(p.region || ''), p.dependencia].filter(Boolean).join(' · ');
+
+  const brecha = Number.isFinite(Number(p.simceMate))
+    ? Math.round(PROMEDIO_MATE - Number(p.simceMate)) : null;
+  const dato = (e, v, n = '') => `<div class="dato">
+    <div class="etiqueta">${esc(e)}</div><div class="valor">${v}</div>
+    ${n ? `<div class="nota">${esc(n)}</div>` : ''}</div>`;
+
+  $('ficha-datos').innerHTML = [
+    dato('Oportunidad', oportunidadDe(p) ?? '—', 'dolor + facilidad'),
+    dato('Matemática', p.simceMate ? Math.round(p.simceMate) : '—',
+      brecha > 0 ? `${brecha} pts bajo el promedio` : 'SIMCE 4º básico'),
+    dato('Tier', p.tierNum ? `${p.tierNum} · ${{ 1: 'Fácil', 2: 'Medio', 3: 'Difícil' }[p.tierNum]}` : '—',
+      p.canal || ''),
+    dato('Matrícula', numero(p.matBasica), p.requiereAte ? 'requiere ATE' : 'sin ATE'),
+  ].join('');
+
+  const correos = partes(p.email);
+  const telefonos = partes(p.telefono);
+  const wa = telefonos.map((t) => t.replace(/\D/g, '')).find((t) => t.length >= 9);
+  $('ficha-contacto').innerHTML = [
+    ...correos.map((c) => `<a class="pastilla" href="mailto:${esc(c)}">✉ ${esc(c)}</a>`),
+    ...telefonos.map((t) => `<a class="pastilla" href="tel:${esc(t.replace(/\s/g, ''))}">☎ ${esc(t)}</a>`),
+    wa ? `<a class="pastilla wa" target="_blank" rel="noopener"
+      href="https://wa.me/${wa.length === 9 ? `56${wa}` : wa}">WhatsApp</a>` : '',
+    p.web ? `<a class="pastilla" href="${esc(p.web)}" target="_blank" rel="noopener">Sitio</a>` : '',
+    correos.length ? `<button class="pastilla" id="ficha-escribir">Escribirle sólo a este</button>` : '',
+  ].filter(Boolean).join('');
+
+  $('ficha-estado').innerHTML = ESTADOS.map((e) => `<option value="${e}"`
+    + `${(p.estadoCrm || 'nuevo') === e ? ' selected' : ''}>${ETIQUETA_ESTADO[e]}</option>`).join('');
+  $('ficha-responsable').value = p.responsable || '';
+  $('ficha-paso').value = p.proximoPaso || '';
+  $('ficha-paso-fecha').value = p.proximoPasoEn || '';
+  $('ficha-notas').value = p.notas || '';
+  $('ficha-guardado').textContent = '';
+}
+
+async function cargarHistorial(id) {
+  const caja = $('ficha-historial');
+  caja.innerHTML = '<li class="sub">Cargando…</li>';
+  try {
+    const s = await getDocs(query(collection(db, 'actividad'),
+      where('rbd', '==', String(id)), orderBy('creado', 'desc'), limit(50)));
+    if (s.empty) {
+      caja.innerHTML = '<li class="sub">Sin movimientos todavía. Lo que registres acá '
+        + 'queda para el resto del equipo.</li>';
+      return;
+    }
+    caja.innerHTML = s.docs.map((d) => {
+      const a = d.data();
+      const [icono, etiqueta] = TIPO_ACTIVIDAD[a.tipo] || ['·', a.tipo];
+      return `<li class="hito">
+        <span class="hito-ic" aria-hidden="true">${icono}</span>
+        <div><div class="hito-txt">${esc(a.texto || etiqueta)}</div>
+        <div class="sub">${etiqueta} · ${fechaHora(a.creado)}</div></div></li>`;
+    }).join('');
+  } catch (e) {
+    caja.innerHTML = `<li class="sub">${esc(e.message)}</li>`;
+  }
+}
+
+const fechaHora = (t) => (t?.toDate
+  ? t.toDate().toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+  : 'recién');
+
+async function guardarFicha() {
+  const p = estado.ficha;
+  if (!p) return;
+  const cambios = {
+    estadoCrm: $('ficha-estado').value,
+    responsable: $('ficha-responsable').value.trim(),
+    proximoPaso: $('ficha-paso').value.trim(),
+    proximoPasoEn: $('ficha-paso-fecha').value || '',
+    notas: $('ficha-notas').value.trim(),
+    actualizado: serverTimestamp(),
+  };
+  $('ficha-guardar').disabled = true;
+  try {
+    await setDoc(doc(db, 'prospectos', String(p.id)), cambios, { merge: true });
+    // Un cambio de estado sin rastro obliga a reconstruir la historia de
+    // memoria; con rastro, cualquiera del equipo la lee.
+    if (cambios.estadoCrm !== (p.estadoCrm || 'nuevo')) {
+      await anotar(p.id, 'estado', `Pasa a ${ETIQUETA_ESTADO[cambios.estadoCrm]}`);
+    }
+    Object.assign(p, cambios);
+    const enLista = estado[estado.vista]?.find((x) => x.id === p.id);
+    if (enLista) Object.assign(enLista, cambios);
+    $('ficha-guardado').textContent = 'Guardado';
+    avisar(`${mail.titulo(p.establecimiento || p.id)}: gestión guardada.`);
+    await cargarHistorial(p.id);
+    if (LISTADOS.includes(estado.vista)) pintar();
+  } catch (e) { mostrarError(e); } finally { $('ficha-guardar').disabled = false; }
+}
+
+async function anotar(rbd, tipo, texto) {
+  await setDoc(doc(collection(db, 'actividad')), {
+    rbd: String(rbd), tipo, texto,
+    uid: auth.currentUser?.uid || '',
+    autor: auth.currentUser?.email || '',
+    creado: serverTimestamp(),
+  });
 }
 
 function actualizarAcciones() {
@@ -642,7 +969,9 @@ function actualizarAcciones() {
     $('nueva-campana').onclick = () => {
       estado.vista = 'prospectos';
       irA('oportunidades');
-      mostrarError({ message: 'Elige el segmento con los filtros y pulsa "Crear campaña con este segmento".' });
+      // Es una instrucción, no un fallo: por la caja roja enseñaría a
+      // ignorar la caja roja.
+      avisar('Elige el segmento con los filtros y pulsa “Crear campaña con este segmento”.');
     };
   } else {
     caja.innerHTML = '';
@@ -1233,7 +1562,8 @@ async function enviar() {
       ({ i, total, d, error }) => progreso(
         `${i}/${total} · ${d.establecimiento || d.rbd}${error ? ` — ERROR: ${error}` : ''}`));
     progreso(`Listo: ${r.enviados} enviados, ${r.errores} con error.`);
-    await marcarContactados(tanda);
+    avisar(`${r.enviados} correos enviados. En 48 horas, pulsa "Revisar respuestas".`);
+    await marcarContactados(tanda, c);
     await pintarCampanas();
     await abrirDetalle(c.id);
   } catch (e) {
@@ -1246,16 +1576,31 @@ async function enviar() {
 /* Un correo enviado cambia el estado del prospecto en el CRM: si no, la
    próxima campaña volvería a incluirlo como si nunca se le hubiera
    escrito. */
-async function marcarContactados(destinatarios) {
-  for (const d of destinatarios) {
-    try {
-      await setDoc(doc(db, 'prospectos', String(d.rbd)), {
+async function marcarContactados(destinatarios, campana) {
+  // En lotes y no uno por uno: con 450 destinatarios, una escritura por
+  // vuelta deja la pantalla congelada minutos después de terminar el
+  // envío, que es justo cuando uno cree que ya acabó.
+  for (let i = 0; i < destinatarios.length; i += 200) {
+    const b = writeBatch(db);
+    for (const d of destinatarios.slice(i, i + 200)) {
+      b.set(doc(db, 'prospectos', String(d.rbd)), {
         estadoCrm: 'contactado',
         // La fecha es lo que impide que la campaña de la semana próxima
         // vuelva a escribirle a quien ya recibió este correo.
         ultimoContacto: serverTimestamp(),
         actualizado: serverTimestamp(),
       }, { merge: true });
+      // El envío también es historia del colegio, no sólo de la campaña.
+      b.set(doc(collection(db, 'actividad')), {
+        rbd: String(d.rbd),
+        tipo: 'envio',
+        texto: `Correo enviado · ${campana?.nombre || 'campaña'}`,
+        uid: auth.currentUser?.uid || '',
+        creado: serverTimestamp(),
+      });
+    }
+    try {
+      await b.commit();
     } catch { /* el estado del CRM no debe hacer fallar el envío */ }
   }
 }
@@ -1278,6 +1623,7 @@ document.querySelector('.lateral').addEventListener('click', async (e) => {
   if (!b) return;
   const v = b.dataset.vista;
   irA(v);
+  if (v === 'hoy') { await cargarHoy(); return; }
   if (v === 'panel') { await cargarPanel(); return; }
   if (v === 'campanas') { await pintarCampanas(); return; }
   if (PAGINADAS.includes(v) && !estado[v].length) { await cargarProspectos(); poblarFiltros(); }
@@ -1304,7 +1650,14 @@ $('cuerpo').addEventListener('click', (e) => {
     estado.seleccion.set(claveFila(fila), fila);
     pintarSeleccion();
     abrirEditorDesdeSegmento();
+    return;
   }
+  /* Cualquier otro punto de la fila abre la ficha. Los controles —casilla,
+     selector de estado, correo— siguen haciendo lo suyo: si hacer clic en
+     un enlace abriera además un panel, nadie volvería a hacer clic. */
+  if (e.target.closest('input, select, a, button')) return;
+  const tr = e.target.closest('tr[data-id]');
+  if (tr && PAGINADAS.includes(estado.vista)) abrirFicha(tr.dataset.id);
 });
 
 $('cabecera-tabla').addEventListener('change', (e) => {
@@ -1341,7 +1694,7 @@ $('chips').addEventListener('click', (e) => {
   alFiltrar({ inmediato: true });
 });
 
-$('limpiar-filtros').addEventListener('click', () => {
+function limpiarFiltros() {
   for (const id of CAMPOS_FILTRO) {
     if (id === 'f-orden') continue;
     if (id === 'f-umbral') { $(id).value = '60'; continue; }
@@ -1349,7 +1702,10 @@ $('limpiar-filtros').addEventListener('click', () => {
   }
   guardarFiltros();
   alFiltrar({ inmediato: true });
-});
+}
+$('limpiar-filtros').addEventListener('click', limpiarFiltros);
+// Un estado vacío sin salida deja al usuario mirando una tabla en blanco.
+$('vacio-limpiar').addEventListener('click', limpiarFiltros);
 
 // "/" enfoca la búsqueda, como en cualquier herramienta de trabajo diario
 document.addEventListener('keydown', (e) => {
@@ -1545,6 +1901,7 @@ $('c-guardar').addEventListener('click', async () => {
   try {
     c.id = await mail.guardarCampana(db, c, estado.destinatarios, auth.currentUser.uid);
     progreso('Borrador guardado.');
+    avisar('Borrador guardado.');
     await pintarCampanas();
     comprobarSeguimiento();
   } catch (e) { mostrarError(e); }
@@ -1582,12 +1939,19 @@ $('d-revisar').addEventListener('click', async () => {
   }
   $('d-revisar').disabled = true;
   try {
-    const r = await mail.revisarRespuestas(db, estado.campanaActual.id);
+    const r = await mail.revisarRespuestas(db, estado.campanaActual.id,
+      null, auth.currentUser?.uid);
     // Las bajas y los rebotes detectados tienen que salir del segmento en
     // el acto, no en la próxima sesión.
     if (r.bajas || r.rebotes) estado.bajas = await mail.cargarBajas(db).catch(() => estado.bajas);
     await abrirDetalle(estado.campanaActual.id);
+    contarHoy();
     if (!r.revisados) mostrarError({ message: 'No hay envíos que revisar todavía.' });
+    else if (r.respuestas) {
+      avisar(`${r.respuestas} respondieron. Están esperando en “Hoy”.`);
+    } else {
+      avisar('Sin respuestas nuevas por ahora.');
+    }
   } catch (e) { mostrarError(e); } finally { $('d-revisar').disabled = false; }
 });
 
@@ -1652,6 +2016,60 @@ getRedirectResult(auth).catch((e) => {
 });
 $('salir').addEventListener('click', () => signOut(auth));
 
+// ---------- ficha y bandeja de trabajo ----------
+$('ficha-cerrar').addEventListener('click', cerrarFicha);
+$('velo').addEventListener('click', cerrarFicha);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('ficha').classList.contains('oculto')) cerrarFicha();
+});
+$('ficha-guardar').addEventListener('click', guardarFicha);
+
+$('ficha-tipos').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tipo]');
+  if (!b) return;
+  for (const x of $('ficha-tipos').querySelectorAll('button')) {
+    x.setAttribute('aria-pressed', String(x === b));
+  }
+  $('ficha-texto').focus();
+});
+
+async function registrarActividad() {
+  const p = estado.ficha;
+  const texto = $('ficha-texto').value.trim();
+  if (!p || !texto) { $('ficha-texto').focus(); return; }
+  const tipo = $('ficha-tipos').querySelector('[aria-pressed="true"]')?.dataset.tipo || 'nota';
+  $('ficha-registrar').disabled = true;
+  try {
+    await anotar(p.id, tipo, texto);
+    $('ficha-texto').value = '';
+    await cargarHistorial(p.id);
+    avisar('Registrado en el historial.');
+  } catch (e) { mostrarError(e); } finally { $('ficha-registrar').disabled = false; }
+}
+$('ficha-registrar').addEventListener('click', registrarActividad);
+$('ficha-texto').addEventListener('keydown', (e) => { if (e.key === 'Enter') registrarActividad(); });
+
+/* Desde la ficha se puede escribir a ese colegio sin volver al listado:
+   el camino corto entre "acabo de hablar con ellos" y "les mando la
+   propuesta" es lo que hace que el CRM se use. */
+$('ficha-contacto').addEventListener('click', (e) => {
+  if (!e.target.closest('#ficha-escribir')) return;
+  const p = estado.ficha;
+  if (!p) return;
+  cerrarFicha();
+  estado.seleccion.clear();
+  estado.seleccion.set(`${estado.vista}:${p.id}`, { ...p, rbd: p.rbd ?? Number(p.id) });
+  pintarSeleccion();
+  abrirEditorDesdeSegmento();
+});
+
+$('pilas-hoy').addEventListener('click', (e) => {
+  const f = e.target.closest('button[data-ficha]');
+  if (f) { abrirFicha(f.dataset.ficha); return; }
+  const c = e.target.closest('button[data-campana]');
+  if (c) abrirDetalle(c.dataset.campana);
+});
+
 /* Las escuchas de la ayuda son delegadas en el documento: los "?" de las
    tablas se recrean en cada repintado, así que engancharlos uno a uno los
    dejaría muertos a la primera. */
@@ -1674,6 +2092,7 @@ onAuthStateChanged(auth, async (u) => {
     poblarFiltros();
     await pintarCampanas();
     comprobarSeguimiento();
+    contarHoy();
   } catch (e) {
     $('cargando').classList.add('oculto');
     mostrarError(e);

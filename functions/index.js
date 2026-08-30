@@ -48,6 +48,19 @@ async function registrar(campanaId, rbd, campo) {
   await dest.set(datos, { merge: true });
   await db.doc(`campanas/${campanaId}`)
     .set({ totales: { [real]: FieldValue.increment(1) } }, { merge: true });
+
+  /* El mismo dato, reflejado en el prospecto. Dentro de la campaña sólo
+     sirve para mirar esa campaña; en el prospecto permite preguntarle a
+     la base "quiénes abrieron y no han contestado" sin recorrer campaña
+     por campaña, que es la lista de llamadas del día. */
+  if (!esBot) {
+    // update y no set: con `set` un RBD inventado en la URL crearía un
+    // prospecto fantasma en la base.
+    await db.doc(`prospectos/${rbd}`).update({
+      [campo === 'aperturas' ? 'aperturasCorreo' : 'clicsCorreo']: FieldValue.increment(1),
+      ultimaApertura: FieldValue.serverTimestamp(),
+    }).catch(() => { /* el destinatario puede no ser un prospecto de la base */ });
+  }
 }
 
 /* Baja en un clic. Gmail exige que el enlace de List-Unsubscribe atienda

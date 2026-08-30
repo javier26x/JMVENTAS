@@ -143,6 +143,37 @@ export const AYUDA = {
     + 'consultar en el servidor se aplican sobre lo ya cargado, así que a '
     + 'veces hay que traer más para ver más.'],
 
+  // ---------- hoy y ficha ----------
+  'hoy-respondieron': ['Respondieron y esperan',
+    'Colegios que contestaron el correo y siguen sin gestionar. Se llenan '
+    + 'solos al pulsar "Revisar respuestas" en una campaña. Responder en '
+    + 'menos de dos horas hábiles es lo que separa una reunión de un correo '
+    + 'perdido.'],
+  'hoy-pendientes': ['Próximos pasos de hoy',
+    'Lo que quedó comprometido en la ficha de cada colegio y ya vence. Si '
+    + 'está vacío no es que no haya trabajo: es que no se anotó.'],
+  'hoy-calientes': ['Abrieron y no contestaron',
+    'Dos aperturas o más sin responder: el correo les interesó pero no se '
+    + 'atrevieron a escribir. Una llamada acá convierte más barato que '
+    + 'cualquier envío nuevo. Requiere campañas con seguimiento activado.'],
+  'hoy-seguimientos': ['Campañas que tocan seguimiento',
+    'Enviadas hace más de tres días y con gente que no ha contestado. Abre '
+    + 'la campaña y pulsa "Crear seguimiento".'],
+  'ficha-estado': ['Estado',
+    'Dónde va este colegio en el embudo. "Respondió" lo pone la app sola al '
+    + 'detectar la respuesta; el resto se mueve a mano y queda anotado en el '
+    + 'historial.'],
+  'ficha-paso': ['Próximo paso',
+    'Qué hay que hacer y cuándo. Con fecha, aparece en la bandeja de Hoy el '
+    + 'día que vence: es la única forma de que un "llámame en marzo" no se '
+    + 'pierda.'],
+  'ficha-registrar': ['Registrar en el historial',
+    'Deja constancia de una llamada, una reunión o una propuesta. Los envíos '
+    + 'de correo y las respuestas se anotan solos.'],
+  'ficha-historial': ['Historial',
+    'Todo lo que ha pasado con este colegio, del equipo completo: correos '
+    + 'enviados, respuestas, cambios de estado y lo que se registre a mano.'],
+
   // ---------- panel ----------
   'g-estado': ['Pipeline comercial',
     'Cuántos establecimientos hay en cada estado del embudo, contados en el '
