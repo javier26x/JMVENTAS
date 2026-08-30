@@ -127,20 +127,6 @@
       ]
     },
     {
-      "collectionGroup": "actividad",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "rbd",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "fecha",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "prospectos",
       "queryScope": "COLLECTION",
       "fields": [
