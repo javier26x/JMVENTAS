@@ -353,10 +353,17 @@ async function enviarCampana(campana, token, hastaMs) {
   return { enviados, errores, corte, quedaron: cola.length - enviados - errores };
 }
 
+/* Santiago corre funciones pero no Cloud Scheduler, así que el reloj
+   vive en otra región. Da igual dónde: el trabajo es hablar con
+   Firestore y con Gmail, y entre correo y correo hay una pausa de 1,4
+   segundos que se come cualquier diferencia de latencia. La hora sí es
+   chilena, que es lo único que se nota. */
+const REGION_RELOJ = 'us-central1';
+
 exports.correosProgramados = onSchedule({
   schedule: '*/5 * * * *',
   timeZone: 'America/Santiago',
-  region: 'southamerica-west1',
+  region: REGION_RELOJ,
   secrets: [CLIENT_ID, CLIENT_SECRET],
   timeoutSeconds: 540,
   memory: '512MiB',
