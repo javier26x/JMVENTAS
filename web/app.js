@@ -992,6 +992,7 @@ function pintarFicha(p) {
     ...correos.map((c) => `<a class="pastilla" href="mailto:${esc(c)}">✉ ${esc(c)}</a>`),
     ...telefonos.map((t) => `<a class="pastilla" href="tel:${esc(t.replace(/\s/g, ''))}">☎ ${esc(t)}</a>`),
     wa ? `<a class="pastilla wa" target="_blank" rel="noopener"
+      data-wa="${wa.length === 9 ? `56${wa}` : wa}"
       href="https://wa.me/${wa.length === 9 ? `56${wa}` : wa}">WhatsApp</a>` : '',
     p.web ? `<a class="pastilla" href="${esc(p.web)}" target="_blank" rel="noopener">Sitio</a>` : '',
     correos.length ? `<button class="pastilla" id="ficha-escribir">Escribirle sólo a este</button>` : '',
@@ -1061,6 +1062,32 @@ async function guardarFicha() {
     await cargarHistorial(p.id);
     if (LISTADOS.includes(estado.vista)) pintar();
   } catch (e) { mostrarError(e); } finally { $('ficha-guardar').disabled = false; }
+}
+
+/* Intenta la aplicación de WhatsApp y cae a la web si no responde. El
+   esquema whatsapp:// es lo único que despierta la aplicación instalada;
+   wa.me, en un computador, termina casi siempre en la web con un código
+   QR. Si la aplicación toma el enlace, esta pestaña deja de estar a la
+   vista y entonces no hay que mandar a nadie a ninguna parte. */
+function abrirWhatsApp(numero, texto, web) {
+  let salio = false;
+  const marcar = () => { if (document.hidden) salio = true; };
+  document.addEventListener('visibilitychange', marcar, { once: true });
+
+  /* El intento va por un marco oculto y no por location: si nadie tiene
+     registrado el esquema, el navegador se llevaría el CRM entero a una
+     pantalla de error. Dentro del marco, ese fallo no se nota. */
+  const marco = document.createElement('iframe');
+  marco.style.display = 'none';
+  marco.src = `whatsapp://send?phone=${numero}`
+    + (texto ? `&text=${encodeURIComponent(texto)}` : '');
+  document.body.appendChild(marco);
+
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', marcar);
+    marco.remove();
+    if (!salio && !document.hidden) window.open(web, '_blank', 'noopener');
+  }, 1600);
 }
 
 async function anotar(rbd, tipo, texto) {
@@ -2217,7 +2244,18 @@ $('ficha-texto').addEventListener('keydown', (e) => { if (e.key === 'Enter') reg
 /* Desde la ficha se puede escribir a ese colegio sin volver al listado:
    el camino corto entre "acabo de hablar con ellos" y "les mando la
    propuesta" es lo que hace que el CRM se use. */
+/* WhatsApp abre la aplicación, no la web. El enlace wa.me es correcto y
+   se deja en el href para que copiarlo siga funcionando, pero al hacer
+   clic se intenta primero el esquema que despierta la aplicación
+   instalada; si no aparece, se sigue a la web. */
 $('ficha-contacto').addEventListener('click', (e) => {
+  const wa = e.target.closest('a[data-wa]');
+  if (wa) {
+    e.preventDefault();
+    abrirWhatsApp(wa.dataset.wa, `Hola, le escribo de JUMP Math Chile por ${
+      mail.titulo(estado.ficha?.establecimiento || 'su colegio')}.`, wa.href);
+    return;
+  }
   if (!e.target.closest('#ficha-escribir')) return;
   const p = estado.ficha;
   if (!p) return;

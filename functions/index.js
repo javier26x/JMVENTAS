@@ -103,6 +103,67 @@ const PAGINA_BAJA = (ok) => `<!doctype html><html lang="es"><head>
   <p style="margin:22px 0 0;font-size:12px;color:#8a93a3">JUMP Math Chile · Santiago de Chile</p>
 </div></body></html>`;
 
+/* Traduce un enlace web de WhatsApp al esquema que abre la aplicación.
+   Devuelve null para cualquier otro destino, que sigue con su redirect
+   de siempre. */
+function enlaceApp(url) {
+  const host = url.hostname.toLowerCase();
+  if (!['wa.me', 'api.whatsapp.com', 'web.whatsapp.com'].includes(host)) return null;
+  const telefono = (host === 'wa.me'
+    ? url.pathname.replace(/\D/g, '')
+    : (url.searchParams.get('phone') || '').replace(/\D/g, ''));
+  if (!telefono) return null;
+  const texto = url.searchParams.get('text') || '';
+  return `whatsapp://send?phone=${telefono}`
+    + (texto ? `&text=${encodeURIComponent(texto)}` : '');
+}
+
+const escapar = (s) => String(s).replace(/[&<>"']/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const PAGINA_WHATSAPP = (app, web) => `<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Abriendo WhatsApp…</title></head>
+<body style="margin:0;background:#eef1f5;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:420px;margin:18vh auto;background:#fff;border-radius:14px;
+  padding:30px 32px;text-align:center">
+  <div style="height:5px;background:#1faa4f;border-radius:3px;margin-bottom:22px"></div>
+  <h1 style="margin:0 0 8px;font-size:19px;color:#14345c">Abriendo WhatsApp…</h1>
+  <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#5a6b84">
+    Si no se abre solo, usa uno de estos:</p>
+  <p style="margin:0 0 10px">
+    <a href="${escapar(app)}" style="display:block;background:#1faa4f;color:#fff;
+      text-decoration:none;font-weight:bold;padding:13px 18px;border-radius:9px">
+      Abrir la aplicación</a></p>
+  <p style="margin:0">
+    <a href="${escapar(web)}" style="font-size:13.5px;color:#5a6b84">
+      Seguir en WhatsApp Web</a></p>
+</div>
+<script>
+  var app = ${JSON.stringify(app)};
+  var web = ${JSON.stringify(web)};
+  // Si la aplicación toma el enlace, esta pestaña deja de estar a la
+  // vista: ahí no hay que mandar a nadie a la web, o al volver del chat
+  // se encontraría con el código QR.
+  var salio = false;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) salio = true;
+  });
+  window.addEventListener('pagehide', function () { salio = true; });
+  // El intento va por un marco oculto y no por location: si nadie tiene
+  // registrado el esquema, el navegador se lleva la pestaña entera a una
+  // pantalla de error y con ella el plan B. Dentro del marco, el mismo
+  // fallo no se nota.
+  var marco = document.createElement('iframe');
+  marco.style.display = 'none';
+  marco.src = app;
+  document.body.appendChild(marco);
+  setTimeout(function () {
+    if (!salio && !document.hidden) location.replace(web);
+  }, 1600);
+</script>
+</body></html>`;
+
 exports.seguimiento = onRequest({
   region: 'southamerica-west1',
   // Endpoint público: sin tope, un bucle de peticiones se traduce en
@@ -158,5 +219,20 @@ exports.seguimiento = onRequest({
       res.status(400).send('destino inválido');
       return;
     }
+
+    /* WhatsApp merece un salto distinto. Un 302 de servidor deja al
+       teléfono sin la señal que necesita para entregarle el enlace a la
+       aplicación instalada, y el clic termina en WhatsApp Web pidiendo un
+       código QR: para un director que no usa la web, eso es un callejón
+       sin salida y una reunión perdida. La página de abajo intenta abrir
+       la aplicación y sólo cae a la web si no aparece. */
+    const app = enlaceApp(url);
+    if (app) {
+      res.set('Content-Type', 'text/html; charset=utf-8');
+      res.set('Cache-Control', 'no-store, max-age=0');
+      res.status(200).send(PAGINA_WHATSAPP(app, url.toString()));
+      return;
+    }
+
     res.redirect(302, url.toString());
   });

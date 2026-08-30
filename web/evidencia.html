@@ -266,12 +266,35 @@
      botón que abre un chat con nadie. */
   const wa = new URLSearchParams(location.search).get('wa');
   if (wa && /^\d{11,13}$/.test(wa)) {
+    const texto = 'Hola, vengo de la página de JUMP Math. Quiero coordinar la reunión de 30 minutos.';
+    const web = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(texto);
     const boton = document.getElementById('wa');
-    boton.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(
-      'Hola, vengo de la página de JUMP Math. Quiero coordinar la reunión de 30 minutos.');
+    boton.href = web;
     boton.hidden = false;
     document.getElementById('bajo-cta').textContent =
       'o responda el correo que recibió — contesta la misma persona.';
+
+    /* En el computador, wa.me termina en WhatsApp Web pidiendo un código
+       QR: para quien no la usa, eso es un callejón sin salida. Se intenta
+       primero la aplicación instalada y sólo se cae a la web si no
+       aparece. */
+    boton.addEventListener('click', function (e) {
+      e.preventDefault();
+      var salio = false;
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) salio = true;
+      }, { once: true });
+      // Por un marco oculto: si nadie tiene registrado el esquema, usar
+      // location se llevaría la página a una pantalla de error.
+      var marco = document.createElement('iframe');
+      marco.style.display = 'none';
+      marco.src = 'whatsapp://send?phone=' + wa + '&text=' + encodeURIComponent(texto);
+      document.body.appendChild(marco);
+      setTimeout(function () {
+        marco.remove();
+        if (!salio && !document.hidden) location.href = web;
+      }, 1600);
+    });
   }
 </script>
 </body>
