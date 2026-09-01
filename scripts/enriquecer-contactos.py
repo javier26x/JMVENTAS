@@ -82,10 +82,15 @@ def _desenvolver(href: str) -> str:
 LIMITE_FALLOS = 8
 fallos_seguidos = 0
 
+# La pausa se ajusta sola. Un buscador que empieza a rechazar no necesita
+# que le pidan mas despacio en la proxima corrida: lo necesita ahora.
+espera_extra = 0.0
+ESPERA_MAX = 90.0
+
 
 def buscar_sitio(consulta: str, sess: requests.Session) -> str:
     """Primer resultado organico que no sea agregador ni red social."""
-    global fallos_seguidos
+    global fallos_seguidos, espera_extra
     try:
         r = sess.post('https://html.duckduckgo.com/html/',
                       data={'q': consulta}, headers=HDRS, timeout=25)
@@ -93,8 +98,13 @@ def buscar_sitio(consulta: str, sess: requests.Session) -> str:
         # dice que le estas pidiendo demasiado rapido.
         if r.status_code != 200 or 'anomaly' in r.text.lower():
             fallos_seguidos += 1
-            print(f'   ! buscador rechaza la consulta (HTTP {r.status_code})')
-            time.sleep(random.uniform(8, 15))
+            # Se duplica la espera en cada rechazo. Insistir al mismo ritmo
+            # contra quien acaba de decir que no es lo que convierte un
+            # limite temporal en un bloqueo largo.
+            espera_extra = min(max(espera_extra * 2, 5.0), ESPERA_MAX)
+            print(f'   ! buscador rechaza (HTTP {r.status_code}) · '
+                  f'esperando {espera_extra:.0f}s')
+            time.sleep(espera_extra)
             return ''
         soup = BeautifulSoup(r.text, 'html.parser')
         # varios selectores: el markup de DDG cambia cada cierto tiempo
@@ -110,9 +120,12 @@ def buscar_sitio(consulta: str, sess: requests.Session) -> str:
             if any(x in dom for x in AGREGADORES):
                 continue
             fallos_seguidos = 0        # respondio de verdad
+            espera_extra = max(0.0, espera_extra / 2)   # se relaja de a poco
             return f'{p.scheme}://{dom}'
-        # Respuesta valida pero sin resultados utiles: no es un bloqueo.
-        fallos_seguidos = 0
+        # Respuesta valida sin resultados: es un colegio sin web, no un
+        # bloqueo. No suma, pero tampoco resta: reseteando aca, un rechazo
+        # de cada dos dejaba el contador siempre por debajo del limite y el
+        # freno no saltaba nunca.
     except Exception as e:
         fallos_seguidos += 1
         print(f'   ! busqueda: {e}')
