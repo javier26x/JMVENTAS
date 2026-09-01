@@ -164,7 +164,12 @@ def main():
                     help='dónde escribir el resultado. Por defecto, junto a la '
                          'entrada con sufijo -contactos, que además queda '
                          'cubierto por .gitignore. Si ya existe, se retoma.')
-    ap.add_argument('--tier', default='1 · FACIL')
+    ap.add_argument('--tier', default='1 · FACIL',
+                    help='"todos" para no filtrar por tier')
+    ap.add_argument('--particion', default=None, metavar='N/M',
+                    help='procesa sólo una de M partes (N empieza en 0). '
+                         'Permite correr M procesos a la vez sobre dominios '
+                         'distintos, cada uno con su propia --salida.')
     ap.add_argument('--canal', default=None, help='filtra por CANAL exacto')
     ap.add_argument('--limite', type=int, default=200)
     ap.add_argument('--por-sostenedor', action='store_true',
@@ -195,10 +200,32 @@ def main():
         if col not in df.columns:
             df[col] = ''
 
-    sel = df.TIER == a.tier
+    sel = (df.TIER == a.tier) if a.tier.lower() != 'todos' else (df.TIER == df.TIER)
     if a.canal:
         sel &= df.CANAL == a.canal
-    obj = df[sel & (df.EMAIL == '')]
+    obj = df[sel]
+
+    if a.particion:
+        # Repartir por posicion y no por tier: los tramos quedan del mismo
+        # tamano y, sobre todo, cada proceso toca dominios distintos. La
+        # pausa entre peticiones existe para no golpear un sitio repetido,
+        # no para espaciar visitas a 7.808 servidores que no se conocen
+        # entre si, asi que paralelizar aqui no es menos educado.
+        try:
+            cual, cuantas = (int(x) for x in a.particion.split('/'))
+        except ValueError:
+            print('--particion se escribe N/M, por ejemplo 0/8')
+            return
+        if not 0 <= cual < cuantas:
+            print(f'--particion {a.particion}: N debe ir de 0 a {cuantas - 1}')
+            return
+        obj = obj.iloc[cual::cuantas]
+        print(f'Particion {cual + 1} de {cuantas}')
+
+    # Se descarta a los ya resueltos DESPUES de partir. Al reves, cada
+    # relanzamiento trocearia un conjunto mas chico y a cada proceso le
+    # tocarian colegios distintos: dos se pisarian y a otros no iria nadie.
+    obj = obj[obj.EMAIL == '']
 
     if a.por_sostenedor:
         # un colegio representante por red: el de mayor matricula

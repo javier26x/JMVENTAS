@@ -2,17 +2,20 @@
 # ============================================================
 # JUMP Math Chile - Cosecha completa, de principio a fin
 #
-# Corre las tres piezas en el orden que importa y deja UN archivo listo
-# para cargar. Pensado para un VPS: se puede cortar en cualquier momento
-# y relanzar el mismo comando, porque cada etapa retoma donde iba.
+# Corre las tres etapas y deja UN archivo listo para cargar. Se puede
+# cortar en cualquier momento y relanzar el mismo comando: cada parte
+# retoma donde iba.
 #
-# El orden no es casual. Primero lo oficial, que es gratis y no molesta a
-# nadie. Despues el raspado por tier, empezando por los colegios que
-# cierran mas rapido: si hay que parar a mitad de camino, lo que quedo
-# hecho es lo que mas vale.
+#   bash scripts/cosechar-todo.sh        # 8 procesos en paralelo
+#   bash scripts/cosechar-todo.sh 12     # mas agresivo
+#   bash scripts/cosechar-todo.sh 1      # uno solo, para depurar
 #
-#   bash scripts/cosechar-todo.sh              # todo
-#   bash scripts/cosechar-todo.sh --sin-tier3  # salta los 5.715 dificiles
+# Sobre el paralelismo: la pausa entre peticiones existe para no golpear
+# un mismo sitio repetidamente. Aca hay 7.808 dominios distintos que no
+# se conocen entre si, y cada proceso toma una particion por posicion, de
+# modo que dos procesos nunca visitan el mismo servidor a la vez.
+# Espaciar visitas a servidores ajenos no protege a nadie: solo alarga la
+# corrida de 3 horas a 30.
 #
 # Esta maquina no necesita credenciales de Google: no escribe en
 # Firestore. Produce datos/contactos-listos.csv y ahi termina su trabajo.
@@ -21,11 +24,9 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 BASE='datos/prospectos_jumpmath.csv'
-RASPADO='datos/prospectos_jumpmath-contactos.csv'
+PROCESOS="${1:-8}"
 REGISTRO="$HOME/cosecha-completa.log"
 
-# Cada etapa se anuncia en el registro con su hora: con corridas de
-# muchas horas, saber cuando empezo cada cosa es la mitad del diagnostico.
 etapa() {
   echo ""
   echo "=============================================================="
@@ -35,40 +36,60 @@ etapa() {
 }
 
 {
-  etapa 'ETAPA 1/3 · Nominas oficiales del MINEDUC'
+  etapa "ETAPA 1/3 · Nominas oficiales del MINEDUC"
   # Ventana 8: las filas de estos PDF parten el correo varias lineas bajo
   # el RBD. Mas ancha no aporta y empieza a atribuir correos ajenos.
   python3 -u scripts/cosechar-oficiales.py --ventana 8
 
-  etapa 'ETAPA 2/3 · Sitios web de los colegios'
-  # Por tier y en este orden: si hay que cortar, lo hecho es lo valioso.
-  # --limite alto porque el script ya salta los que tienen contacto.
-  for TIER in '1 · FACIL' '2 · MEDIO' '3 · DIFICIL'; do
-    if [ "$TIER" = '3 · DIFICIL' ] && [ "${1:-}" = '--sin-tier3' ]; then
-      echo ''
-      echo ">>> Tier 3 omitido por --sin-tier3"
-      continue
-    fi
-    echo ''
-    echo ">>> Tier: $TIER"
-    python3 -u scripts/enriquecer-contactos.py --csv "$BASE" --tier "$TIER" --limite 9999
+  etapa "ETAPA 2/3 · Sitios web · $PROCESOS procesos en paralelo"
+  echo "Cada proceso escribe su propio archivo; ninguno pisa al otro."
+  echo "Sigue el avance de uno cualquiera con:"
+  echo "  tail -f ~/parte-0.log"
+  echo ""
+
+  PIDS=()
+  for ((i = 0; i < PROCESOS; i++)); do
+    python3 -u scripts/enriquecer-contactos.py \
+      --csv "$BASE" \
+      --tier todos \
+      --particion "$i/$PROCESOS" \
+      --salida "datos/parte-$i-contactos.csv" \
+      --limite 999999 > "$HOME/parte-$i.log" 2>&1 &
+    PIDS+=($!)
+    echo "  proceso $((i + 1))/$PROCESOS lanzado (pid ${PIDS[-1]})"
   done
 
-  etapa 'ETAPA 3/3 · Un solo archivo, con el mejor correo de cada colegio'
+  # Un informe cada cinco minutos: con corridas de horas, no saber si
+  # avanza es lo que lleva a matarla por las dudas.
+  while true; do
+    VIVOS=0
+    for pid in "${PIDS[@]}"; do
+      kill -0 "$pid" 2>/dev/null && VIVOS=$((VIVOS + 1))
+    done
+    [ "$VIVOS" -eq 0 ] && break
+    HECHOS=$(grep -ch 'contacto_ok\|-> \[' "$HOME"/parte-*.log 2>/dev/null | paste -sd+ | bc 2>/dev/null || echo '?')
+    echo "  [$(date '+%H:%M:%S')] $VIVOS procesos vivos · ~$HECHOS colegios con contacto"
+    sleep 300
+  done
+  echo "Raspado terminado."
+
+  etapa "ETAPA 3/3 · Un solo archivo, con el mejor correo de cada colegio"
   ENTRADAS=()
   [ -f datos/contactos-oficiales.csv ] && ENTRADAS+=(datos/contactos-oficiales.csv)
-  [ -f "$RASPADO" ] && ENTRADAS+=("$RASPADO")
+  for f in datos/parte-*-contactos.csv; do
+    [ -f "$f" ] && ENTRADAS+=("$f")
+  done
   if [ ${#ENTRADAS[@]} -eq 0 ]; then
-    echo 'No hay nada que consolidar: ninguna etapa dejo archivo.'
+    echo "No hay nada que consolidar: ninguna etapa dejo archivo."
     exit 1
   fi
   python3 -u scripts/consolidar-contactos.py "${ENTRADAS[@]}"
 
-  etapa 'LISTO'
-  echo 'Transfiere el resultado a la maquina que tiene credenciales:'
-  echo "  scp $(whoami)@$(hostname -I | awk '{print $1}'):$(pwd)/datos/contactos-listos.csv ."
-  echo ''
-  echo 'Y cargalo desde alli:'
-  echo '  node firebase/actualizar-contactos.mjs --admin \'
-  echo '    --csv datos/contactos-listos.csv --fuente cosecha'
+  etapa "LISTO"
+  echo "Trae el resultado a la maquina que tiene credenciales:"
+  echo "  scp $(whoami)@$(hostname -I | awk '{print $1}'):$(pwd)/datos/contactos-listos.csv datos/"
+  echo ""
+  echo "Y cargalo desde alli:"
+  echo "  node firebase/actualizar-contactos.mjs --admin \\"
+  echo "    --csv datos/contactos-listos.csv --fuente cosecha"
 } 2>&1 | tee "$REGISTRO"
