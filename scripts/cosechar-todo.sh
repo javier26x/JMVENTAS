@@ -47,7 +47,13 @@ etapa() {
   echo "  tail -f ~/parte-0.log"
   echo ""
 
+  # Los logs de corridas anteriores se van. Si la corrida pasada uso otro
+  # numero de procesos, los sobrantes quedan en disco y el contador los
+  # suma: eso disparaba una alarma de bloqueo sobre rechazos de ayer.
+  rm -f "$HOME"/parte-*.log
+
   PIDS=()
+  MIOS=()
   for ((i = 0; i < PROCESOS; i++)); do
     python3 -u scripts/enriquecer-contactos.py \
       --csv "$BASE" \
@@ -56,6 +62,7 @@ etapa() {
       --salida "datos/parte-$i-contactos.csv" \
       --limite 999999 > "$HOME/parte-$i.log" 2>&1 &
     PIDS+=($!)
+    MIOS+=("$HOME/parte-$i.log")
     echo "  proceso $((i + 1))/$PROCESOS lanzado (pid ${PIDS[-1]})"
   done
 
@@ -69,8 +76,8 @@ etapa() {
     [ "$VIVOS" -eq 0 ] && break
     # awk y no bc: bc no viene instalado en un Ubuntu minimo, y un
     # informe que dice "?" cada cinco minutos no informa de nada.
-    HECHOS=$(cat "$HOME"/parte-*.log 2>/dev/null | grep -c ' -> ' || echo 0)
-    FALLOS=$(cat "$HOME"/parte-*.log 2>/dev/null | grep -c 'buscador rechaza' || echo 0)
+    HECHOS=$(cat "${MIOS[@]}" 2>/dev/null | grep -c ' -> ' || echo 0)
+    FALLOS=$(cat "${MIOS[@]}" 2>/dev/null | grep -c 'buscador rechaza' || echo 0)
     AVISO=''
     [ "$FALLOS" -gt 20 ] && AVISO=" · ATENCION: $FALLOS rechazos del buscador, baja el paralelismo"
     echo "  [$(date '+%H:%M:%S')] $VIVOS procesos vivos · $HECHOS con contacto$AVISO"
