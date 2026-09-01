@@ -75,11 +75,27 @@ def _desenvolver(href: str) -> str:
     return href
 
 
+# Cuantas busquedas seguidas pueden fallar antes de rendirse. Si el
+# buscador corta el grifo, "no encontre el sitio" y "me estan bloqueando"
+# se ven exactamente igual desde aca, y seguir significaria marcar miles
+# de colegios como "sin web" cuando si la tienen. Mejor parar y avisar.
+LIMITE_FALLOS = 8
+fallos_seguidos = 0
+
+
 def buscar_sitio(consulta: str, sess: requests.Session) -> str:
     """Primer resultado organico que no sea agregador ni red social."""
+    global fallos_seguidos
     try:
         r = sess.post('https://html.duckduckgo.com/html/',
                       data={'q': consulta}, headers=HDRS, timeout=25)
+        # 202 y las paginas con "anomaly" son la forma en que DuckDuckGo
+        # dice que le estas pidiendo demasiado rapido.
+        if r.status_code != 200 or 'anomaly' in r.text.lower():
+            fallos_seguidos += 1
+            print(f'   ! buscador rechaza la consulta (HTTP {r.status_code})')
+            time.sleep(random.uniform(8, 15))
+            return ''
         soup = BeautifulSoup(r.text, 'html.parser')
         # varios selectores: el markup de DDG cambia cada cierto tiempo
         anclas = (soup.select('a.result__a')
@@ -93,8 +109,12 @@ def buscar_sitio(consulta: str, sess: requests.Session) -> str:
                 continue
             if any(x in dom for x in AGREGADORES):
                 continue
+            fallos_seguidos = 0        # respondio de verdad
             return f'{p.scheme}://{dom}'
+        # Respuesta valida pero sin resultados utiles: no es un bloqueo.
+        fallos_seguidos = 0
     except Exception as e:
+        fallos_seguidos += 1
         print(f'   ! busqueda: {e}')
     return ''
 
@@ -244,6 +264,12 @@ def main():
     ok = 0
     for n, (idx, row) in enumerate(obj.iterrows(), 1):
         print(f'[{n}/{len(obj)}] {row.ESTABLECIMIENTO} ({row.COMUNA})')
+        if fallos_seguidos >= LIMITE_FALLOS:
+            print(f'\n  DETENIDO: {LIMITE_FALLOS} busquedas seguidas fallaron.')
+            print('  El buscador esta bloqueando esta IP. Baja el numero de')
+            print('  procesos en paralelo, espera un rato y relanza: lo hecho')
+            print('  se conserva y se retoma donde iba.')
+            break
         sitio = row.WEB or buscar_sitio(
             row.BUSQUEDA_WEB or f'{row.ESTABLECIMIENTO} {row.COMUNA} colegio Chile sitio oficial',
             sess)
