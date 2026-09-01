@@ -29,6 +29,8 @@ UA = ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
 HDRS = {'User-Agent': UA, 'Accept-Language': 'es-CL,es;q=0.9'}
 PAUSA = (2.5, 5.0)          # segundos entre requests: se educado, no te bloquean
 
+SALIDA = None          # se resuelve en main(), nunca es el archivo de entrada
+
 RE_MAIL = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
 
 # Telefono chileno: +56 2 2345 6789 (fijo Santiago) / +56 9 8765 4321 (movil)
@@ -156,7 +158,12 @@ def raspar(sitio: str, sess: requests.Session):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--csv', default=CSV_DEFECTO)
+    ap.add_argument('--csv', default=CSV_DEFECTO,
+                    help='base de entrada; NO se modifica')
+    ap.add_argument('--salida', default=None,
+                    help='dónde escribir el resultado. Por defecto, junto a la '
+                         'entrada con sufijo -contactos, que además queda '
+                         'cubierto por .gitignore. Si ya existe, se retoma.')
     ap.add_argument('--tier', default='1 · FACIL')
     ap.add_argument('--canal', default=None, help='filtra por CANAL exacto')
     ap.add_argument('--limite', type=int, default=200)
@@ -168,7 +175,22 @@ def main():
     if not os.path.exists(a.csv):
         sys.exit(f'No existe {a.csv}. Corre primero build-prospectos.sh')
 
-    df = pd.read_csv(a.csv, dtype=str, encoding='utf-8-sig').fillna('')
+    # La salida por defecto lleva sufijo -contactos, que .gitignore ya
+    # cubre: leer y escribir el mismo archivo era la forma facil de
+    # publicar 8.000 correos en el repo sin notarlo.
+    global SALIDA
+    if a.salida:
+        SALIDA = a.salida
+    else:
+        raiz, ext = os.path.splitext(a.csv)
+        SALIDA = f'{raiz}-contactos{ext or ".csv"}'
+
+    # Se retoma de la salida si ya existe: asi una corrida cortada no
+    # empieza de cero ni pierde lo cosechado.
+    fuente = SALIDA if os.path.exists(SALIDA) else a.csv
+    print(f'entrada: {fuente}')
+    print(f'salida : {SALIDA}')
+    df = pd.read_csv(fuente, dtype=str, encoding='utf-8-sig').fillna('')
     for col in ('EMAIL', 'TELEFONO', 'WEB', 'CONTACTO', 'ESTADO_CRM'):
         if col not in df.columns:
             df[col] = ''
@@ -213,11 +235,11 @@ def main():
         print(f'    {sitio} -> {mails or "-"} | {tels or "-"}')
 
         if n % 10 == 0:
-            df.to_csv(a.csv, index=False, encoding='utf-8-sig')
+            df.to_csv(SALIDA, index=False, encoding='utf-8-sig')
             print(f'    [guardado parcial: {ok}/{n} con correo]')
         time.sleep(random.uniform(*PAUSA))
 
-    df.to_csv(a.csv, index=False, encoding='utf-8-sig')
+    df.to_csv(SALIDA, index=False, encoding='utf-8-sig')
     con_mail = (df.EMAIL != '').sum()
     print(f'\nListo. Esta corrida: {ok}/{len(obj)} con correo.')
     print(f'Base completa: {con_mail} de {len(df)} con correo.')
