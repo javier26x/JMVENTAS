@@ -176,9 +176,11 @@ def main():
         if not candidatos:
             if telefono:
                 stats['solo teléfono'] += 1
+                origen = filas[0]['fuente']
                 salida.append({'RBD': rbd, 'EMAIL': '', 'TELEFONO': telefono,
                                'WEB': web, 'CONTACTO': contacto,
-                               'FUENTE': filas[0]['fuente'], 'CONFIANZA': 'SIN CORREO',
+                               'FUENTE': 'oficial' if 'oficial' in origen.lower() else 'cosecha',
+                               'ARCHIVOS': origen, 'CONFIANZA': 'SIN CORREO',
                                'MOTIVO': 'sólo teléfono'})
             else:
                 stats['sin nada'] += 1
@@ -202,14 +204,18 @@ def main():
             'TELEFONO': telefono,
             'WEB': web,
             'CONTACTO': contacto,
-            'FUENTE': fuente,
+            # Etiqueta limpia: es lo que el cargador estampa en el CRM y
+            # lo que el filtro "Fuente" muestra. El nombre de los archivos
+            # va en ARCHIVOS, para poder rastrear sin ensuciar la marca.
+            'FUENTE': 'oficial' if 'oficial' in fuente.lower() else 'cosecha',
+            'ARCHIVOS': fuente,
             'CONFIANZA': conf,
             'MOTIVO': motivo,
         })
 
     os.makedirs(os.path.dirname(a.salida), exist_ok=True)
     campos = ['RBD', 'EMAIL', 'TELEFONO', 'WEB', 'CONTACTO', 'FUENTE',
-              'CONFIANZA', 'MOTIVO']
+              'ARCHIVOS', 'CONFIANZA', 'MOTIVO']
     with open(a.salida, 'w', newline='', encoding='utf-8-sig') as fh:
         w = csv.DictWriter(fh, fieldnames=campos)
         w.writeheader()

@@ -300,6 +300,16 @@ function consultaProspectos(desde) {
       if (cond) partes.push(cond);
       partes.push(orderBy('dolorMate', 'desc'));
     }
+  } else if (fuentePedida()) {
+    /* Filtrar por fuente sólo en la página cargada no servía: 373
+       oficiales repartidos entre 7.808 dan unos catorce por página de
+       300, y armar "la campaña de los oficiales" exigía pulsar "cargar
+       más" veintitantas veces. Se piden todos de una, sin ordenar en el
+       servidor —así basta el índice automático de un campo— y el resto
+       de los filtros y el orden los aplica el cliente, que ya lo hacía. */
+    partes.push(where('contactoFuente', '==', fuentePedida()));
+    partes.push(limit(2000));
+    return query(...partes);
   } else {
     const texto = normalizar($('buscar').value).trim();
     const palabra = texto.split(/\s+/).filter((p) => p.length >= 3)[0];
@@ -313,6 +323,14 @@ function consultaProspectos(desde) {
   if (desde) partes.push(startAfter(desde));
   partes.push(limit(PAGINA));
   return query(...partes);
+}
+
+/* La fuente que se pidió al servidor. "sin" no se puede pedir: en
+   Firestore un campo ausente no coincide con nada, así que ése se
+   resuelve en el cliente sobre la página, como antes. */
+function fuentePedida() {
+  const v = $('f-fuente').value;
+  return v && v !== 'sin' && estado.vista === 'prospectos' ? v : '';
 }
 
 async function cargarProspectos({ continuar = false } = {}) {
@@ -345,7 +363,7 @@ async function cargarProspectos({ continuar = false } = {}) {
     if (vista === 'oportunidades') for (const f of filas) f._oport = oportunidadDe(f);
     estado[vista] = continuar ? estado[vista].concat(filas) : filas;
     estado.ultimoDoc = snap.docs[snap.docs.length - 1] || null;
-    estado.hayMas = snap.docs.length === PAGINA;
+    estado.hayMas = !fuentePedida() && snap.docs.length === PAGINA;
     limpiarError();
   } catch (e) {
     if (mio === estado.peticion) mostrarError(e);

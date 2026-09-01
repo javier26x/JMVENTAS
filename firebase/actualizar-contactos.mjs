@@ -244,8 +244,14 @@ async function main() {
         }
         if (!Object.keys(datos).length) { saltados += 1; continue; }
 
-        // Deja rastro de origen para poder revertir sólo esto después.
-        datos.contactoFuente = FUENTE;
+        /* Deja rastro de origen para poder revertir sólo esto después.
+           Si la fila trae su propia FUENTE, manda ella: un CSV
+           consolidado mezcla correos oficiales con raspados, y estampar
+           a todos con el flag de la línea de comandos borraba la marca
+           "Oficial" de los que sí lo eran. */
+        const enFila = String(f.FUENTE || '').trim().toLowerCase();
+        datos.contactoFuente = ['oficial', 'cosecha', 'web', 'manual'].includes(enFila)
+          ? enFila : FUENTE;
         if (datos.email && (previo.estadoCrm || 'nuevo') === 'nuevo') {
           datos.estadoCrm = 'contacto_ok';
         }
