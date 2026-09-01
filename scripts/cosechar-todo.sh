@@ -67,8 +67,13 @@ etapa() {
       kill -0 "$pid" 2>/dev/null && VIVOS=$((VIVOS + 1))
     done
     [ "$VIVOS" -eq 0 ] && break
-    HECHOS=$(grep -ch 'contacto_ok\|-> \[' "$HOME"/parte-*.log 2>/dev/null | paste -sd+ | bc 2>/dev/null || echo '?')
-    echo "  [$(date '+%H:%M:%S')] $VIVOS procesos vivos · ~$HECHOS colegios con contacto"
+    # awk y no bc: bc no viene instalado en un Ubuntu minimo, y un
+    # informe que dice "?" cada cinco minutos no informa de nada.
+    HECHOS=$(cat "$HOME"/parte-*.log 2>/dev/null | grep -c ' -> ' || echo 0)
+    FALLOS=$(cat "$HOME"/parte-*.log 2>/dev/null | grep -c 'buscador rechaza' || echo 0)
+    AVISO=''
+    [ "$FALLOS" -gt 20 ] && AVISO=" · ATENCION: $FALLOS rechazos del buscador, baja el paralelismo"
+    echo "  [$(date '+%H:%M:%S')] $VIVOS procesos vivos · $HECHOS con contacto$AVISO"
     sleep 300
   done
   echo "Raspado terminado."
