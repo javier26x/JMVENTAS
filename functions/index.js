@@ -354,12 +354,15 @@ async function cupoDeHoy() {
 /* Marca el prospecto igual que el envío manual: sin esto, un colegio al
    que le escribió el servidor seguiría figurando como no contactado y
    la campaña siguiente volvería a escribirle. */
-async function anotarContacto(rbd, nombre, uid) {
+async function anotarContacto(rbd, nombre, uid, correo) {
   // update y no set: un destinatario que viene de otra colección no debe
   // aparecer como prospecto fantasma en la base.
   await db.doc(`prospectos/${rbd}`).update({
     estadoCrm: 'contactado',
     ultimoContacto: FieldValue.serverTimestamp(),
+    // A que buzon se escribio: si manana conseguimos otra direccion para
+    // este colegio, la guardia de 30 dias no debe taparla.
+    ...(correo ? { ultimoCorreo: String(correo).toLowerCase() } : {}),
     actualizado: FieldValue.serverTimestamp(),
   }).catch(() => { /* el CRM no debe hacer fallar un envío ya despachado */ });
   // La bitácora va aparte: que el prospecto no exista no es razón para
@@ -444,7 +447,7 @@ async function enviarCampana(campana, token, hastaMs) {
       await db.doc(`envios/${cupo.dia}`).set(
         { n: FieldValue.increment(1), actualizado: FieldValue.serverTimestamp() },
         { merge: true }).catch((e) => console.error('contador', e));
-      await anotarContacto(rbd, campana.nombre, campana.uid);
+      await anotarContacto(rbd, campana.nombre, campana.uid, d.get('email'));
     } catch (e) {
       const msg = String(e.message).slice(0, 200);
       await d.ref.update({ estado: 'error', error: msg })

@@ -46,7 +46,7 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['estadoCrm', 'email', 'telefono', 'web', 'contacto',
                   'contactoFuente', 'notas', 'proximoPaso', 'responsable',
-                  'actualizado', 'ultimoContacto', 'proximoPasoEn',
+                  'actualizado', 'ultimoContacto', 'ultimoCorreo', 'proximoPasoEn',
                   'respondioEn', 'motivoCierre']);
     }
 

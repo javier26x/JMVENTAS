@@ -102,7 +102,7 @@ const estado = {
 };
 
 const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
-  'f-estado', 'f-correo', 'f-orden', 'f-umbral'];
+  'f-estado', 'f-correo', 'f-fuente', 'f-orden', 'f-umbral'];
 
 /* Filtros que aceptan varios valores a la vez. Un vendedor no trabaja "el
    tier 1": trabaja "tier 1 y 2 de la Metropolitana y Valparaíso". Obligar
@@ -112,7 +112,7 @@ const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
 const MULTI = ['f-tier', 'f-canal', 'f-region', 'f-estado'];
 const ETIQUETA_FILTRO = {
   buscar: 'Búsqueda', 'f-tier': 'Tier', 'f-canal': 'Canal', 'f-region': 'Región',
-  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-correo': 'Correo', 'f-umbral': 'Dolor',
+  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-correo': 'Correo', 'f-fuente': 'Fuente', 'f-umbral': 'Dolor',
 };
 
 // ---------- presentación ----------
@@ -160,14 +160,32 @@ function porQue(p) {
   return r.join(' · ');
 }
 
-function celdaContacto(correos, telefonos) {
+/* De dónde salió el contacto. Un correo del MINEDUC y uno raspado de una
+   web no merecen la misma confianza al leer un rebote, y el que se editó
+   a mano no debe pisarse nunca en una recarga. */
+const FUENTES = {
+  oficial: ['Oficial', 'Nómina del MINEDUC'],
+  cosecha: ['Web', 'Raspado del sitio del colegio'],
+  web: ['Web', 'Raspado del sitio del colegio'],
+  manual: ['A mano', 'Escrito por el equipo'],
+};
+
+function marcaFuente(fuente) {
+  const f = FUENTES[String(fuente || '').toLowerCase()];
+  if (!f) return '';
+  return `<span class="fuente-contacto f-${esc(String(fuente).toLowerCase())}"
+    title="${esc(f[1])}">${esc(f[0])}</span>`;
+}
+
+function celdaContacto(correos, telefonos, fuente) {
   const c = (correos || []).filter(Boolean);
   const t = (telefonos || []).filter(Boolean);
   if (!c.length && !t.length) return '<span class="sin-contacto">—</span>';
   return [
     ...c.map((x) => `<a href="mailto:${esc(x)}">${esc(x)}</a>`),
     ...t.map((x) => `<a href="tel:${esc(x.replace(/\s/g, ''))}">${esc(x)}</a>`),
-  ].join('');
+    marcaFuente(fuente),
+  ].filter(Boolean).join('');
 }
 
 function selectorEstado(col, id, actual) {
@@ -343,7 +361,7 @@ async function cargarProspectos({ continuar = false } = {}) {
 
 function filtrar(filas) {
   const texto = normalizar($('buscar').value).trim();
-  const [ate, correo] = ['f-ate', 'f-correo'].map((i) => $(i).value);
+  const [ate, correo, fuente] = ['f-ate', 'f-correo', 'f-fuente'].map((i) => $(i).value);
   // Un conjunto vacío no filtra: significa "todos", no "ninguno".
   const tier = estado.multi['f-tier'];
   const canal = estado.multi['f-canal'];
@@ -355,6 +373,11 @@ function filtrar(filas) {
     if (region.size && !region.has(f.region)) return false;
     if (ate && f.requiereAte !== (ate === 'si')) return false;
     if (est.size && !est.has(f.estadoCrm || 'nuevo')) return false;
+    if (fuente) {
+      const suya = String(f.contactoFuente || '');
+      // "sin" agrupa lo que llegó antes de que se registrara el origen.
+      if (fuente === 'sin' ? suya !== '' : suya !== fuente) return false;
+    }
     if (correo) {
       const tiene = Boolean(String(f.email || '').trim() || (f.emails || []).length);
       if (tiene !== (correo === 'si')) return false;
@@ -406,7 +429,7 @@ const FILA = {
     <td>${celdaMate(p)}</td>
     <td>${distintivoTier(p.tierNum)}<div class="sub">${distintivoAte(p.requiereAte)}</div></td>
     <td class="num">${numero(p.matBasica)}</td>
-    <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono))}</td>
+    <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono), p.contactoFuente)}</td>
     <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>`,
 
   prospectos: (p) => `
@@ -418,7 +441,7 @@ const FILA = {
     <td>${celdaMate(p)}</td>
     <td class="num">${numero(p.matBasica)}</td>
     <td class="num">${p.eeEnRed > 1 ? `${numero(p.eeEnRed)} EE` : '—'}</td>
-    <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono))}</td>
+    <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono), p.contactoFuente)}</td>
     <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>`,
 
   cuentas: (c) => `
@@ -430,7 +453,7 @@ const FILA = {
     <td>${distintivoAte(c.requiereAte)}</td>
     <td class="num">${c.eeBasica ? numero(c.eeBasica) : '—'}</td>
     <td class="num">${c.matBasica ? numero(c.matBasica) : '—'}</td>
-    <td class="contacto">${celdaContacto(c.emails, c.telefonos)}</td>
+    <td class="contacto">${celdaContacto(c.emails, c.telefonos, c.contactoFuente)}</td>
     <td>${esc(c.confianza || '—')}</td>
     <td>${selectorEstado('cuentas', c.id, c.estadoCrm)}</td>`,
 
@@ -1219,7 +1242,7 @@ function segmentoActual() {
     .filter((p) => mail.primerCorreo(p.email))
     .map((p) => ({ ...p, rbd: p.rbd ?? Number(p.id) }));
 
-  const podas = { baja: 0, repetido: 0, reciente: 0, enCurso: 0, cola: 0 };
+  const podas = { baja: 0, repetido: 0, reciente: 0, enCurso: 0, cola: 0, recuperado: 0 };
   /* Escribirle en frío a quien ya está en conversación es peor que no
      escribirle: llega un correo de presentación a alguien con quien hay
      una reunión hecha o una propuesta encima de la mesa. */
@@ -1231,7 +1254,20 @@ function segmentoActual() {
     if (estado.bajas.has(String(p.rbd))) { podas.baja += 1; continue; }
     if (CERRADOS.includes(String(p.estadoCrm || ''))) { podas.enCurso += 1; continue; }
     if (estado.enCola.has(String(p.rbd))) { podas.cola += 1; continue; }
-    if ((p.ultimoContacto?.toMillis?.() || 0) > limite) { podas.reciente += 1; continue; }
+    /* La guardia de 30 días protege a una persona de recibir dos correos
+       seguidos. Si desde entonces conseguimos otra dirección —la nómina
+       oficial, el sitio del colegio—, al otro lado hay un buzón que nunca
+       ha recibido nada: excluirlo sería castigarlo por un correo que no
+       le llegó. */
+    const casillaAhora = mail.primerCorreo(p.email).toLowerCase();
+    const casillaAntes = String(p.ultimoCorreo || '').toLowerCase();
+    const buzonNuevo = Boolean(casillaAntes) && Boolean(casillaAhora)
+      && casillaAntes !== casillaAhora;
+    if (!buzonNuevo && (p.ultimoContacto?.toMillis?.() || 0) > limite) {
+      podas.reciente += 1;
+      continue;
+    }
+    if (buzonNuevo && (p.ultimoContacto?.toMillis?.() || 0) > limite) podas.recuperado += 1;
 
     const casilla = mail.primerCorreo(p.email).toLowerCase();
     const previo = porCasilla.get(casilla);
@@ -1328,6 +1364,10 @@ function resumenSegmento() {
     podas.cola ? `${numero(podas.cola)} esperando en una campaña programada` : '',
   ].filter(Boolean);
 
+  const recuperados = podas.recuperado
+    ? `<span class="sub" style="flex-basis:100%">Entran igual: ${numero(podas.recuperado)} `
+      + 'contactados hace poco, pero a una dirección distinta de la que tenemos ahora.</span>'
+    : '';
   $('segmento-resumen').innerHTML = `
     <span><b>${numero(d.length)}</b> destinatarios</span>
     <span><b>${numero(alumnos)}</b> alumnos</span>
@@ -1335,7 +1375,8 @@ function resumenSegmento() {
     <span><b>${numero(d.filter((p) => !p.requiereAte).length)}</b> sin ATE</span>`
     + (excluidos.length
       ? `<span class="sub" style="flex-basis:100%">Fuera del envío: ${excluidos.join(' · ')}.</span>`
-      : '');
+      : '')
+    + recuperados;
 }
 
 /* ---------- calentamiento ----------
@@ -2051,6 +2092,10 @@ async function marcarContactados(destinatarios, campana) {
       const etapa = (!previo || previo === 'nuevo') ? { estadoCrm: 'contactado' } : {};
       b.set(doc(db, 'prospectos', String(d.rbd)), {
         ...etapa,
+        // A qué buzón se escribió, no sólo cuándo. Sin esto no se puede
+        // distinguir "ya le escribimos" de "le escribimos a una dirección
+        // que resultó estar muerta y ahora tenemos otra".
+        ultimoCorreo: mail.primerCorreo(d.email).toLowerCase(),
         // La fecha es lo que impide que la campaña de la semana próxima
         // vuelva a escribirle a quien ya recibió este correo.
         ultimoContacto: serverTimestamp(),
@@ -2225,7 +2270,7 @@ $('filtros').addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarPaneles(); });
 
-for (const id of ['f-ate', 'f-correo', 'f-orden', 'f-umbral']) {
+for (const id of ['f-ate', 'f-correo', 'f-fuente', 'f-orden', 'f-umbral']) {
   $(id).addEventListener('change', () => { guardarFiltros(); alFiltrar({ inmediato: true }); });
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));

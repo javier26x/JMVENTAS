@@ -812,6 +812,16 @@ th .ayuda { vertical-align: baseline; }
 button.peligro { color: var(--tinta-apagada); }
 button.peligro:hover { color: var(--critico); border-color: var(--critico); }
 
+/* De dónde salió el contacto. Discreto: es un dato de confianza, no la
+   información principal de la celda. */
+.fuente-contacto {
+  display: inline-block; font-size: 10.5px; font-weight: 600;
+  padding: 1px 6px; border-radius: 999px; margin-top: 2px;
+  border: 1px solid var(--linea); color: var(--tinta-apagada);
+}
+.fuente-contacto.f-oficial { color: var(--ok); border-color: var(--ok); }
+.fuente-contacto.f-manual { color: var(--titulo); border-color: var(--titulo); }
+
 /* Secciones plegadas: el ajuste que se toca una vez no debe ocupar lo
    mismo que el que se mira siempre. */
 .tarjeta.plegable { padding: 0; }

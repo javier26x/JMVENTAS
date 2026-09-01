@@ -46,6 +46,14 @@ export const AYUDA = {
   'f-correo': ['Con o sin correo',
     'Sólo los que tienen dirección de correo pueden entrar en una campaña. '
     + 'Los "sin correo" son trabajo de teléfono o de búsqueda.'],
+  'f-fuente': ['Fuente del contacto',
+    'De dónde salió el correo, que decide cuánto fiarse de él. "Oficial" '
+    + 'viene de las nóminas del MINEDUC; "Web", del sitio del propio '
+    + 'colegio; "A mano", de alguien del equipo, y ése no se pisa nunca en '
+    + 'una recarga. Los "Sin marcar" son de cargas anteriores a que se '
+    + 'registrara el origen. Sirve para separar una tanda de correos '
+    + 'verificados de una de correos raspados, que rebotan distinto.'],
+
   'f-umbral': ['Dolor en matemática',
     'Las opciones con "+" son acumulativas: "60+" incluye a los críticos, '
     + 'porque quien busca dolor quiere ver primero el peor. Las de tramo '
