@@ -3285,13 +3285,56 @@ $('lista-variables').addEventListener('click', (e) => {
 });
 
 // ---------- sesión ----------
+/* Completa el acceso cuando el flujo fue por redirección.
+   Se guarda la promesa porque hay que esperarla antes de abrir un popup:
+   mientras esa vuelta se resuelve, el SDK puede terminar de dejar un
+   usuario en sesión, y entonces trata el popup siguiente como un intento
+   de enlazar la cuenta en vez de como un acceso. Google ya está enlazado
+   —es el mismo proveedor— y todo termina en "auth/provider-already-linked"
+   sobre una pantalla de login que no dice nada más. */
+const redireccionLista = getRedirectResult(auth).catch((e) => {
+  if (e.code === 'auth/provider-already-linked') return null;   // benigno
+  const aviso = $('acceso-error');
+  aviso.textContent = mensajeDeAcceso(e);
+  aviso.classList.remove('oculto');
+  return null;
+});
+
+function mensajeDeAcceso(e) {
+  return {
+    'auth/operation-not-allowed':
+      'Falta habilitar el proveedor Google: Firebase Console → Authentication → Sign-in method → Google.',
+    'auth/unauthorized-domain':
+      'Este dominio no está autorizado en Authentication → Settings → Authorized domains.',
+    'auth/popup-closed-by-user':
+      'La ventana se cerró antes de completar el acceso. Intenta de nuevo.',
+    'auth/cancelled-popup-request':
+      'Había otra ventana de acceso abierta. Intenta de nuevo.',
+    'auth/provider-already-linked':
+      'Quedó una sesión a medio cerrar en este navegador. Pulsa otra vez; '
+      + 'si vuelve a salir, abre la página en una ventana de incógnito.',
+  }[e.code] || `${e.code || ''} ${e.message || e}`.trim();
+}
+
 $('entrar').addEventListener('click', async () => {
   const b = $('entrar');
   const aviso = $('acceso-error');
   b.disabled = true;
   b.textContent = 'Abriendo ventana de Google…';
+  aviso.classList.add('oculto');
   try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    // Nunca dos operaciones de acceso a la vez: ésa es la que rompe.
+    await redireccionLista;
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (e) {
+      if (e.code !== 'auth/provider-already-linked') throw e;
+      /* La credencial ya está en la cuenta que el SDK tiene a mano, así
+         que lo que sobra es esa cuenta a medias. Se cierra y se entra de
+         nuevo, una sola vez: si vuelve a fallar, el mensaje lo dice. */
+      await signOut(auth);
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    }
     return;                       // onAuthStateChanged toma el control
   } catch (e) {
     if (e.code === 'auth/popup-blocked') {
@@ -3300,28 +3343,12 @@ $('entrar').addEventListener('click', async () => {
       await signInWithRedirect(auth, new GoogleAuthProvider());
       return;
     }
-    aviso.textContent = {
-      'auth/operation-not-allowed':
-        'Falta habilitar el proveedor Google: Firebase Console → Authentication → Sign-in method → Google.',
-      'auth/unauthorized-domain':
-        'Este dominio no está autorizado en Authentication → Settings → Authorized domains.',
-      'auth/popup-closed-by-user':
-        'La ventana se cerró antes de completar el acceso. Intenta de nuevo.',
-      'auth/cancelled-popup-request':
-        'Había otra ventana de acceso abierta. Intenta de nuevo.',
-    }[e.code] || `${e.code || ''} ${e.message || e}`.trim();
+    aviso.textContent = mensajeDeAcceso(e);
     aviso.classList.remove('oculto');
   } finally {
     b.disabled = false;
     b.textContent = 'Entrar con Google';
   }
-});
-
-// Completa el acceso cuando el flujo fue por redirección.
-getRedirectResult(auth).catch((e) => {
-  const aviso = $('acceso-error');
-  aviso.textContent = e.message || String(e);
-  aviso.classList.remove('oculto');
 });
 $('salir').addEventListener('click', () => signOut(auth));
 
