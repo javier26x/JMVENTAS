@@ -93,6 +93,11 @@ const estado = {
   // con qué cuenta quedó autorizado y con qué id de cliente pedirlo.
   programado: { disponible: false, clientId: '', autorizacion: null },
   filtroDetalle: 'todos',
+  /* Qué colegios de la campaña abierta cambiaron de dirección desde que
+     se les escribió. Se llena en segundo plano al abrir el detalle, y se
+     vacía al abrir otra campaña: mostrar los cambios de la anterior sería
+     ofrecer un reenvío a la lista equivocada. */
+  direcciones: null,
   // Filtros de varios valores: id -> conjunto de valores elegidos.
   multi: {},
   // id -> fila. Se guarda el dato completo, no sólo el id, para que la
@@ -1843,6 +1848,7 @@ const FILTROS_DETALLE = {
   respondieron: (d) => d.estado === 'respondido',
   'sin-abrir': (d) => d.estado === 'enviado' && !(d.aperturas > 0),
   problemas: (d) => ['error', 'rebotado', 'baja'].includes(d.estado),
+  'correo-nuevo': (d) => Boolean(estado.direcciones?.cambios.has(String(d.rbd ?? d.id))),
 };
 
 const porcentaje = (parte, total) => (total ? Math.round((parte / total) * 100) : 0);
@@ -1887,11 +1893,10 @@ async function abrirDetalle(id) {
     pendientes === 0 || c?.estado === 'programada');
   $('d-seguimiento').classList.toggle('oculto',
     enviados === 0 || Boolean(c?.seguimientoDe));
-  /* Si a nadie le llegó todavía no hay nada que reenviar. Cuántos
-     cambiaron de dirección se sabe al pulsarlo: averiguarlo acá costaría
-     una lectura por destinatario cada vez que se abre una campaña, y casi
-     siempre para decir cero. */
+  // Si a nadie le llegó todavía no hay nada que reenviar.
   $('caja-reenviar').classList.toggle('oculto', enviados === 0);
+  estado.direcciones = null;
+  pintarBotonReenvio();
 
   const tasaApertura = porcentaje(abiertos, enviados);
   const tasaRespuesta = porcentaje(respondieron, enviados);
@@ -1918,6 +1923,32 @@ async function abrirDetalle(id) {
   pintarComparacion(dest, c);
   pintarDestinatarios();
   $('detalle-cargando').classList.add('oculto');
+
+  /* Las direcciones de hoy se buscan después de pintar, no antes: son una
+     lectura por destinatario, y hacer esperar la tabla entera por una
+     columna secundaria es cambiar lo que se mira siempre por lo que se
+     mira a veces. Cuando llegan, la tabla se repinta con las marcas. */
+  if (enviados === 0) return;
+  const mio = id;
+  revisarDirecciones().then((r) => {
+    if (estado.campanaActual?.id !== mio) return;   // ya abrió otra campaña
+    estado.direcciones = r;
+    pintarBotonReenvio();
+    pintarDestinatarios();
+  }).catch(() => { /* sin esto la campaña se ve igual, sólo sin marcas */ });
+}
+
+/* El botón dice cuántos son antes de pulsarlo. "Reenviar a las
+   direcciones nuevas" sin número obliga a entrar para descubrir que no
+   hay ninguna, y eso pasa la mayoría de las veces. */
+function pintarBotonReenvio() {
+  const b = $('d-reenviar');
+  const r = estado.direcciones;
+  if (!r) { b.textContent = 'Reenviar a las direcciones nuevas'; b.disabled = false; return; }
+  b.textContent = r.lista.length
+    ? `Reenviar a ${numero(r.lista.length)} direccion${r.lista.length === 1 ? '' : 'es'} nueva${r.lista.length === 1 ? '' : 's'}`
+    : 'Ninguno cambió de dirección';
+  b.disabled = r.lista.length === 0;
 }
 
 /* Sin esta tabla, una prueba A/B es sólo dos correos distintos: lo que
@@ -1995,6 +2026,21 @@ function comparacionAsuntos(dest, campana) {
   </div>`;
 }
 
+/* La dirección que el colegio tiene hoy, cuando no es la que recibió el
+   correo. Debajo de la vieja y no en su lugar: la de arriba es a la que
+   se escribió, y es lo que hay que mirar para leer una apertura o un
+   rebote. Si el cambio no entra en el reenvío, va dicho por qué. */
+const correoNuevoDe = (d) => estado.direcciones?.cambios.get(String(d.rbd ?? d.id));
+
+function celdaCorreoNuevo(d) {
+  const n = correoNuevoDe(d);
+  if (!n) return '';
+  return `<div class="correo-nuevo">
+    <span class="etiqueta-nuevo">ahora</span>
+    <a href="mailto:${esc(n.correo)}">${esc(n.correo)}</a>
+    ${n.motivo ? `<span class="sub">no entra: ${esc(n.motivo)}</span>` : ''}</div>`;
+}
+
 function pintarDestinatarios() {
   const filtro = FILTROS_DETALLE[estado.filtroDetalle] || FILTROS_DETALLE.todos;
   // Quien más veces abrió, primero: en una lista de llamadas el orden es
@@ -2006,12 +2052,17 @@ function pintarDestinatarios() {
   for (const b of $('filtros-detalle').querySelectorAll('button[data-filtro]')) {
     b.setAttribute('aria-pressed', String(b.dataset.filtro === estado.filtroDetalle));
   }
+  /* El corte aparece sólo si hay algo que cortar, y lleva el número: un
+     botón que siempre está y casi siempre da cero se deja de mirar. */
+  const cambios = estado.direcciones?.cambios.size || 0;
+  $('corte-correo-nuevo').classList.toggle('oculto', cambios === 0);
+  $('corte-correo-nuevo').textContent = `Cambiaron de correo · ${numero(cambios)}`;
 
   $('cuerpo-destinatarios').innerHTML = filas.map((d) => `<tr>
     <td><div class="nombre">${esc(d.establecimiento)}</div>
       <div class="sub">RBD ${esc(d.rbd)} · ${esc(d.comuna)}${
   conVariantes ? ` · variante ${esc(d.variante || 'A')}` : ''}</div></td>
-    <td>${d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '<span class="sin-contacto">sin correo</span>'}</td>
+    <td>${d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '<span class="sin-contacto">sin correo</span>'}${celdaCorreoNuevo(d)}</td>
     <td><span class="env ${esc(d.estado)}">${esc(d.estado)}</span></td>
     <td>${fecha(d.enviadoEn)}</td>
     <td class="num">${numero(d.aperturas)}</td>
@@ -2060,64 +2111,52 @@ function crearSeguimiento() {
    reenviar; entran por el segmento normal como cualquier otro. */
 const SALIO = ['enviado', 'abierto', 'respondido', 'rebotado', 'baja'];
 
-/* Reenviar una campaña a los colegios que cambiaron de dirección.
+/* Qué dirección tiene hoy cada colegio de una campaña, y cuáles de esos
+   cambios se pueden reenviar.
 
-   El caso es concreto: se le escribió a un colegio al gmail de la
-   directora, después la base ganó la casilla institucional, y ese buzón
-   nuevo no ha recibido nada. No es insistir dos veces, es el primer
-   correo a una dirección distinta.
-
-   Sale como campaña nueva y no como una edición de la vieja. La enviada
-   es el registro de lo que pasó: sus aperturas, sus respuestas y sus
-   rebotes están atados a esos destinatarios y a esas direcciones.
-   Reescribirla encima borraría la medición del envío original y dejaría
-   sin comparación lo único que interesa saber acá, que es si las
-   direcciones nuevas rinden mejor que las viejas. */
-async function crearReenvio() {
-  const original = estado.campanaActual;
+   Una sola pasada para las dos cosas. La marca de la tabla y el número
+   del botón tienen que salir del mismo cálculo: ver cinco colegios
+   marcados y un botón que ofrece tres, sin poder saber cuáles faltan, es
+   peor que no marcar nada. Por eso cada cambio guarda también el motivo
+   por el que no entra, y la tabla lo muestra al lado. */
+async function revisarDirecciones() {
   const salieron = estado.destinatarios.filter((d) => SALIO.includes(d.estado));
-  if (!salieron.length) {
-    mostrarError({ message: 'Esta campaña todavía no le llegó a nadie: no hay nada que reenviar.' });
-    return;
-  }
-
-  const boton = $('d-reenviar');
-  boton.disabled = true;
-  boton.textContent = 'Comparando direcciones…';
-  let mapa;
-  try {
-    [mapa, estado.bajas] = await Promise.all([
-      mail.leerProspectos(db, salieron.map((d) => d.rbd ?? d.id)),
-      mail.cargarBajas(db).catch(() => estado.bajas),
-    ]);
-  } catch (e) {
-    mostrarError(e);
-    return;
-  } finally {
-    boton.disabled = false;
-    boton.textContent = 'Reenviar a las direcciones nuevas';
-  }
-
+  const cambios = new Map();
   const podas = { igual: 0, sinCorreo: 0, baja: 0, respondio: 0, enCurso: 0, repetido: 0 };
+  if (!salieron.length) return { cambios, lista: [], podas, salieron: 0 };
+
+  const [mapa, bajas] = await Promise.all([
+    mail.leerProspectos(db, salieron.map((d) => d.rbd ?? d.id)),
+    mail.cargarBajas(db).catch(() => estado.bajas),
+  ]);
+  estado.bajas = bajas;
+
   const porCasilla = new Map();
   for (const d of salieron) {
     const rbd = String(d.rbd ?? d.id);
+    const p = mapa.get(rbd);
+    const ahora = p ? mail.primerCorreo(p.email).toLowerCase() : '';
+    const antes = String(d.email || '').trim().toLowerCase();
+    if (!ahora) { podas.sinCorreo += 1; continue; }
+    if (ahora === antes) { podas.igual += 1; continue; }
+
+    // Hay dirección nueva: se marca siempre, entre o no en el reenvío.
+    const anotar = (motivo) => cambios.set(rbd, { correo: ahora, motivo });
+
     // Quien contestó ya tiene una conversación abierta: el correo de
     // presentación otra vez, a otra casilla del mismo colegio, es peor
     // que no mandar nada.
-    if (d.estado === 'respondido') { podas.respondio += 1; continue; }
-    if (estado.bajas.has(rbd)) { podas.baja += 1; continue; }
-    const p = mapa.get(rbd);
-    if (!p) { podas.sinCorreo += 1; continue; }
-    if (CERRADOS.includes(String(p.estadoCrm || ''))) { podas.enCurso += 1; continue; }
-    const ahora = mail.primerCorreo(p.email).toLowerCase();
-    if (!ahora) { podas.sinCorreo += 1; continue; }
-    if (ahora === String(d.email || '').trim().toLowerCase()) { podas.igual += 1; continue; }
+    if (d.estado === 'respondido') { podas.respondio += 1; anotar('ya respondió'); continue; }
+    if (estado.bajas.has(rbd)) { podas.baja += 1; anotar('pidió la baja'); continue; }
+    if (CERRADOS.includes(String(p.estadoCrm || ''))) {
+      podas.enCurso += 1; anotar('ya en conversación'); continue;
+    }
+    anotar('');
 
     /* Sin threadId a propósito: el hilo pertenece a la conversación con
        la otra dirección. Enganchar ahí un correo dirigido a alguien que
-       nunca vio el primero le llega como respuesta a algo que no leyó. */
-    /* Se lleva el prospecto entero y sólo se le cambia el correo: el
+       nunca vio el primero le llega como respuesta a algo que no leyó.
+       Se lleva el prospecto entero y sólo se le cambia el correo: el
        cuerpo del mensaje usa comuna, región, SIMCE, matrícula y nombre
        del contacto, y armar la fila campo a campo deja fuera el que se
        agregue mañana a la plantilla. */
@@ -2134,12 +2173,52 @@ async function crearReenvio() {
     const previo = porCasilla.get(ahora);
     if (!previo) { porCasilla.set(ahora, fila); continue; }
     podas.repetido += 1;
-    if ((Number(fila.matBasica) || 0) > (Number(previo.matBasica) || 0)) {
-      porCasilla.set(ahora, fila);
+    const gana = (Number(fila.matBasica) || 0) > (Number(previo.matBasica) || 0);
+    const perdedor = gana ? previo : fila;
+    cambios.get(String(perdedor.rbd)).motivo = 'otro colegio comparte esta casilla';
+    if (gana) porCasilla.set(ahora, fila);
+  }
+  return { cambios, lista: [...porCasilla.values()], podas, salieron: salieron.length };
+}
+
+/* Reenviar una campaña a los colegios que cambiaron de dirección.
+
+   El caso es concreto: se le escribió a un colegio al gmail de la
+   directora, después la base ganó la casilla institucional, y ese buzón
+   nuevo no ha recibido nada. No es insistir dos veces, es el primer
+   correo a una dirección distinta.
+
+   Sale como campaña nueva y no como una edición de la vieja. La enviada
+   es el registro de lo que pasó: sus aperturas, sus respuestas y sus
+   rebotes están atados a esos destinatarios y a esas direcciones.
+   Reescribirla encima borraría la medición del envío original y dejaría
+   sin comparación lo único que interesa saber acá, que es si las
+   direcciones nuevas rinden mejor que las viejas. */
+async function crearReenvio() {
+  const original = estado.campanaActual;
+  const boton = $('d-reenviar');
+  let revision = estado.direcciones;
+  if (!revision) {
+    boton.disabled = true;
+    boton.textContent = 'Comparando direcciones…';
+    try {
+      revision = await revisarDirecciones();
+      estado.direcciones = revision;
+      pintarDestinatarios();
+    } catch (e) {
+      mostrarError(e);
+      boton.disabled = false;
+      return;
+    } finally {
+      pintarBotonReenvio();
     }
   }
+  const { lista, podas } = revision;
 
-  const lista = [...porCasilla.values()];
+  if (!revision.salieron) {
+    mostrarError({ message: 'Esta campaña todavía no le llegó a nadie: no hay nada que reenviar.' });
+    return;
+  }
   if (!lista.length) {
     const detalle = podas.igual
       ? `Los ${numero(podas.igual)} que la recibieron siguen con la misma dirección.`
@@ -3012,11 +3091,20 @@ $('filtros-detalle').addEventListener('click', (e) => {
    teléfono y se llama. */
 $('d-copiar').addEventListener('click', async () => {
   const filtro = FILTROS_DETALLE[estado.filtroDetalle] || FILTROS_DETALLE.todos;
-  const correos = estado.destinatarios.filter(filtro).map((d) => d.email).filter(Boolean);
+  /* Si el colegio cambió de dirección se copia la de hoy: la lista es
+     para escribir o llamar ahora, y la vieja puede ser justo la que
+     rebotó. */
+  let cambiados = 0;
+  const correos = estado.destinatarios.filter(filtro).map((d) => {
+    const n = correoNuevoDe(d);
+    if (n) cambiados += 1;
+    return n ? n.correo : d.email;
+  }).filter(Boolean);
   try {
     await navigator.clipboard.writeText(correos.join(', '));
-    $('d-copiar').textContent = `${correos.length} copiados`;
-    setTimeout(() => { $('d-copiar').textContent = 'Copiar correos de la lista'; }, 1800);
+    $('d-copiar').textContent = `${correos.length} copiados`
+      + (cambiados ? ` · ${cambiados} con la dirección nueva` : '');
+    setTimeout(() => { $('d-copiar').textContent = 'Copiar correos de la lista'; }, 2600);
   } catch {
     mostrarError({ message: 'El navegador no dejó copiar al portapapeles.' });
   }

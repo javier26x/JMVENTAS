@@ -352,11 +352,15 @@ export const AYUDA = {
     'Retoma los destinatarios que quedaron pendientes, sin repetirle a nadie.'],
   'd-copiar': ['Copiar correos',
     'Copia las direcciones del corte que estás viendo. Con "calientes" '
-    + 'marcado, es la lista de llamadas del día.'],
+    + 'marcado, es la lista de llamadas del día. Del colegio que cambió de '
+    + 'dirección copia la de hoy, no la que usó la campaña: la vieja puede '
+    + 'ser justo la que rebotó.'],
   'filtros-detalle': ['Cortes de la lista',
     'Cada corte responde a una acción distinta. "Calientes" son los que '
     + 'abrieron y no contestaron: la conversión más barata que existe. '
-    + '"Errores y rebotes" es la limpieza de la base.'],
+    + '"Errores y rebotes" es la limpieza de la base. "Cambiaron de correo" '
+    + 'aparece cuando algún colegio tiene hoy una dirección distinta de la '
+    + 'que recibió este envío, y sólo entonces.'],
   'kpi-apertura': ['Tasa de apertura',
     'Cuántos abrieron respecto de los enviados. Bajo 35% el problema está en '
     + 'el asunto o en el remitente, no en el mensaje.'],

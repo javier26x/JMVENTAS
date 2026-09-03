@@ -192,10 +192,20 @@ despliegue; hay que tener los dos valores a mano.
 ### Reenviar a las direcciones nuevas
 
 Cuando la base gana correos, algunos colegios quedan con una casilla distinta
-de la que recibió una campaña ya enviada. El botón **"Reenviar a las
-direcciones nuevas"**, en el detalle de esa campaña, compara dirección por
-dirección y arma una campaña nueva con el mismo mensaje para los que
-cambiaron.
+de la que recibió una campaña ya enviada. Al abrir el detalle, la app compara
+dirección por dirección en segundo plano y deja tres cosas a la vista:
+
+- bajo cada correo de la tabla, la dirección que ese colegio tiene hoy, con la
+  etiqueta **ahora**, y el motivo si ese cambio no entra en el reenvío;
+- el corte **"Cambiaron de correo"**, que aparece sólo cuando hay alguno;
+- el botón de reenvío con el número: **"Reenviar a 3 direcciones nuevas"**, o
+  "Ninguno cambió de dirección" si no hay.
+
+El correo de arriba en cada fila sigue siendo el que se usó, porque es el que
+explica una apertura o un rebote. El de abajo es al que habría que escribir
+hoy. "Copiar correos de la lista" copia el de hoy cuando existe.
+
+El botón arma una campaña nueva con el mismo mensaje para los que cambiaron.
 
 No es insistir dos veces. Al otro lado hay un buzón que nunca recibió nada,
 así que va el correo completo y no un recordatorio dentro del hilo viejo: ese

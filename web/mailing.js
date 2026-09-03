@@ -833,11 +833,18 @@ export const primerCorreo = (campo) => String(campo || '')
    documentos de la base ni pedirlos de a uno. */
 export async function leerProspectos(db, rbds) {
   const unicos = [...new Set(rbds.map((r) => String(r)).filter(Boolean))];
+  const bloques = [];
+  for (let i = 0; i < unicos.length; i += 30) bloques.push(unicos.slice(i, i + 30));
   const mapa = new Map();
-  for (let i = 0; i < unicos.length; i += 30) {
-    const snap = await getDocs(query(collection(db, 'prospectos'),
-      where(documentId(), 'in', unicos.slice(i, i + 30))));
-    for (const d of snap.docs) mapa.set(d.id, { id: d.id, ...d.data() });
+  /* De a ocho bloques en paralelo. En serie, una campaña de 500 son
+     diecisiete viajes encadenados y la tabla queda esperando; todos a la
+     vez, una de 5.000 abre 167 consultas de golpe. */
+  for (let i = 0; i < bloques.length; i += 8) {
+    const tandas = await Promise.all(bloques.slice(i, i + 8).map(
+      (b) => getDocs(query(collection(db, 'prospectos'), where(documentId(), 'in', b)))));
+    for (const snap of tandas) {
+      for (const d of snap.docs) mapa.set(d.id, { id: d.id, ...d.data() });
+    }
   }
   return mapa;
 }

@@ -822,6 +822,21 @@ button.peligro:hover { color: var(--critico); border-color: var(--critico); }
 .fuente-contacto.f-oficial { color: var(--ok); border-color: var(--ok); }
 .fuente-contacto.f-manual { color: var(--titulo); border-color: var(--titulo); }
 
+/* La dirección que el colegio tiene hoy, cuando no es la que recibió el
+   correo. Va debajo y con menos peso: la de arriba es la que se usó, y es
+   la que explica una apertura o un rebote. */
+.correo-nuevo {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
+  margin-top: 3px; font-size: 12px;
+}
+.correo-nuevo .etiqueta-nuevo {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 999px;
+  color: color-mix(in srgb, var(--ok) 75%, var(--tinta));
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.correo-nuevo .sub { font-size: 11.5px; }
+
 /* Los establecimientos que no imparten básica regular. No es un adorno:
    marca a quién no debería llegarle una campaña de matemática de 1º a 8º,
    y va en la misma línea del nombre para que se vea antes de elegirlo. */
