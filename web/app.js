@@ -2620,7 +2620,10 @@ async function conectar(leer) {
       .catch(() => mail.conectarGmail(auth, { leer }));
     pintarEstadoGmail(r.correo, r.leer);
     limpiarError();
-  } catch (e) { mostrarError(e); }
+  } catch (e) {
+    // Un código de Firebase tal cual no le dice nada a nadie.
+    mostrarError(e.code ? { message: mensajeDeAcceso(e) } : e);
+  }
 }
 $('conectar-gmail').addEventListener('click', () => conectar(true));
 $('conectar-solo-envio').addEventListener('click', () => conectar(false));
@@ -3313,6 +3316,12 @@ function mensajeDeAcceso(e) {
     'auth/provider-already-linked':
       'Quedó una sesión a medio cerrar en este navegador. Pulsa otra vez; '
       + 'si vuelve a salir, abre la página en una ventana de incógnito.',
+    'auth/user-mismatch':
+      'La cuenta que elegiste en Google no es con la que iniciaste sesión. '
+      + 'Elige la misma, o sal y vuelve a entrar con la otra.',
+    'auth/popup-blocked':
+      'El navegador bloqueó la ventana de Google. Permite las ventanas '
+      + 'emergentes para este sitio y vuelve a intentar.',
   }[e.code] || `${e.code || ''} ${e.message || e}`.trim();
 }
 

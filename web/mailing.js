@@ -11,7 +11,7 @@
 // envíos, errores, rebotes y respuestas, que es lo que predice ventas.
 // ============================================================
 import {
-  GoogleAuthProvider, signInWithPopup,
+  GoogleAuthProvider, signInWithPopup, reauthenticateWithPopup,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, deleteField,
@@ -76,7 +76,24 @@ export async function conectarGmail(auth, { leer = true } = {}) {
   if (leer) proveedor.addScope(GMAIL_LEER);
   proveedor.setCustomParameters({ prompt: 'consent select_account' });
 
-  const res = await signInWithPopup(auth, proveedor);
+  /* Con sesión abierta esto no es un acceso, es pedirle a Google más
+     permisos para la cuenta que ya entró. `signInWithPopup` sobre un
+     usuario existente termina en "auth/provider-already-linked": el SDK
+     lo toma como un intento de enlazar Google a la cuenta, y Google ya
+     está enlazado —es con lo que se inició sesión—. La operación que
+     corresponde es reautenticar, que devuelve la misma credencial con los
+     permisos nuevos. Si en la ventana se elige otra cuenta, Google
+     responde "user-mismatch" y ahí sí toca entrar como esa otra. */
+  const usuario = auth.currentUser;
+  let res;
+  try {
+    res = usuario
+      ? await reauthenticateWithPopup(usuario, proveedor)
+      : await signInWithPopup(auth, proveedor);
+  } catch (e) {
+    if (!['auth/user-mismatch', 'auth/provider-already-linked'].includes(e.code)) throw e;
+    res = await signInWithPopup(auth, proveedor);
+  }
   const cred = GoogleAuthProvider.credentialFromResult(res);
   if (!cred?.accessToken) {
     throw new Error('Google no entregó un token con permiso para enviar correo.');
