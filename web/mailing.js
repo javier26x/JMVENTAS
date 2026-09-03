@@ -771,6 +771,10 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
     cuerpo: campana.cuerpo || '',
     cuerpoB: campana.cuerpoB || '',
     seguimientoDe: campana.seguimientoDe || '',
+    // De qué campaña salió, cuando ésta es el reenvío a las direcciones
+    // que cambiaron. Guardarlo permite leer después por qué existen dos
+    // campañas con el mismo mensaje y comparar cómo rindió cada una.
+    reenvioDe: campana.reenvioDe || '',
     evidencia: Boolean(campana.evidencia),
     plantilla: campana.plantilla || 'lamina',
     tema: campana.tema || 'claro',
@@ -822,6 +826,21 @@ export async function guardarCampana(db, campana, destinatarios, uid) {
 
 export const primerCorreo = (campo) => String(campo || '')
   .split(';').map((s) => s.trim()).filter(Boolean)[0] || '';
+
+/* Los prospectos de una lista de RBD, por bloques de 30, que es el máximo
+   que admite `in`. Sirve para comparar la dirección que usó una campaña
+   contra la que el colegio tiene hoy, sin traerse los casi doce mil
+   documentos de la base ni pedirlos de a uno. */
+export async function leerProspectos(db, rbds) {
+  const unicos = [...new Set(rbds.map((r) => String(r)).filter(Boolean))];
+  const mapa = new Map();
+  for (let i = 0; i < unicos.length; i += 30) {
+    const snap = await getDocs(query(collection(db, 'prospectos'),
+      where(documentId(), 'in', unicos.slice(i, i + 30))));
+    for (const d of snap.docs) mapa.set(d.id, { id: d.id, ...d.data() });
+  }
+  return mapa;
+}
 
 export async function listarDestinatarios(db, campanaId, soloPendientes = false) {
   /* Por páginas y en orden de id. Con un tope plano de 2.000 y sin

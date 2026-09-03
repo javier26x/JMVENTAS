@@ -338,6 +338,16 @@ export const AYUDA = {
     'Arma una campaña de recordatorio para los que no respondieron, dentro '
     + 'del hilo del primer correo y en pieza breve. Es la acción de mayor '
     + 'retorno: un segundo toque suele duplicar las respuestas totales.'],
+  'd-reenviar': ['Reenviar a las direcciones nuevas',
+    'Compara la dirección que usó esta campaña con la que cada colegio tiene '
+    + 'hoy, y arma una campaña nueva con el mismo mensaje para los que '
+    + 'cambiaron. No es insistir dos veces: al otro lado hay una casilla que '
+    + 'nunca recibió nada, y por eso va el correo completo y no un '
+    + 'recordatorio dentro del hilo viejo. Quedan fuera los que ya '
+    + 'respondieron, los que pidieron la baja, los que están en conversación '
+    + 'y los que siguen con la misma dirección. Sale como campaña aparte para '
+    + 'no tocar las métricas de la original y poder comparar si las '
+    + 'direcciones nuevas rinden mejor.'],
   'd-reanudar': ['Reanudar envío',
     'Retoma los destinatarios que quedaron pendientes, sin repetirle a nadie.'],
   'd-copiar': ['Copiar correos',

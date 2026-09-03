@@ -189,6 +189,35 @@ despliegue; hay que tener los dos valores a mano.
    original, en pieza breve. Un segundo toque suele duplicar las respuestas
    totales. Un tercero a los 8 días todavía rinde; un cuarto, ya molesta.
 
+### Reenviar a las direcciones nuevas
+
+Cuando la base gana correos, algunos colegios quedan con una casilla distinta
+de la que recibió una campaña ya enviada. El botón **"Reenviar a las
+direcciones nuevas"**, en el detalle de esa campaña, compara dirección por
+dirección y arma una campaña nueva con el mismo mensaje para los que
+cambiaron.
+
+No es insistir dos veces. Al otro lado hay un buzón que nunca recibió nada,
+así que va el correo completo y no un recordatorio dentro del hilo viejo: ese
+hilo pertenece a la conversación con la otra dirección, y engancharlo ahí le
+llega a alguien como respuesta a algo que no leyó.
+
+Quedan fuera, y se informan uno por uno bajo el resumen:
+
+- los que ya respondieron, porque tienen una conversación abierta;
+- los que pidieron la baja;
+- los que están en reunión, propuesta, ganado o descartado;
+- los que siguen con la misma dirección;
+- los que se quedaron sin correo en la base;
+- los que cambiaron al mismo buzón del sostenedor, de los que va uno solo.
+
+El caso más claro es un rebote: la dirección vieja no existía y ahora hay
+otra. Esos entran siempre.
+
+Sale como campaña aparte, con `reenvioDe` apuntando a la original, para no
+tocar sus aperturas ni sus respuestas y poder comparar después si las
+direcciones nuevas rinden mejor que las viejas.
+
 ---
 
 ## 5. Qué mirar y qué corregir
