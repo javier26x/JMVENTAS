@@ -281,6 +281,118 @@
       ]
     },
     {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "contactoFuente",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "contactoFuente",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "contactoFuente",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "nivel",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matBasica",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "nivel",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dolorMate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "nivel",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "puntaje",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "nivel",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estadoCrm",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "prospectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "nivel",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "requiereAte",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "destinatarios",
       "queryScope": "COLLECTION",
       "fields": [

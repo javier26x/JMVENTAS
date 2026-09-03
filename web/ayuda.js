@@ -48,11 +48,22 @@ export const AYUDA = {
     + 'Los "sin correo" son trabajo de teléfono o de búsqueda.'],
   'f-fuente': ['Fuente del contacto',
     'De dónde salió el correo, que decide cuánto fiarse de él. "Oficial" '
-    + 'viene de las nóminas del MINEDUC; "Web", del sitio del propio '
-    + 'colegio; "A mano", de alguien del equipo, y ése no se pisa nunca en '
-    + 'una recarga. Los "Sin marcar" son de cargas anteriores a que se '
-    + 'registrara el origen. Sirve para separar una tanda de correos '
-    + 'verificados de una de correos raspados, que rebotan distinto.'],
+    + 'viene de las nóminas del MINEDUC; "Directorio", de la base de correos '
+    + 'por establecimiento; "Web", del sitio del propio colegio; "A mano", de '
+    + 'alguien del equipo, y ése no se pisa nunca en una recarga. Los "Sin '
+    + 'marcar" son de cargas anteriores a que se registrara el origen. Sirve '
+    + 'para separar una tanda de correos verificados de una de correos '
+    + 'raspados, que rebotan distinto.'],
+
+  'f-nivel': ['Nivel que imparte',
+    'La base de prospección son los colegios con básica regular: son los que '
+    + 'pueden usar JUMP Math de 1º a 8º. Después se agregaron los demás '
+    + 'establecimientos del directorio —jardines, liceos técnicos, escuelas '
+    + 'especiales, educación de adultos— y van marcados con este campo. '
+    + 'Déjalo en "todos" para verlos todos; ponlo en "Sólo básica regular" '
+    + 'antes de armar una campaña, porque a un jardín infantil no se le '
+    + 'ofrece un programa de matemática de básica. "Por revisar" son los que '
+    + 'parecen básica y no estaban en la base: valen una mirada.'],
 
   'f-umbral': ['Dolor en matemática',
     'Las opciones con "+" son acumulativas: "60+" incluye a los críticos, '

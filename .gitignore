@@ -30,6 +30,8 @@ firebase-debug.log
 # no calce publica miles de correos personales en un repo público.
 datos/*ontact*.csv
 datos/*correo*.csv
+datos/*clasificad*.csv
+datos/*directorio*.csv
 !datos/contactos-verificados.csv
 
 # Descargas del Simce: se vuelven a bajar solas

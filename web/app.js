@@ -102,7 +102,7 @@ const estado = {
 };
 
 const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
-  'f-estado', 'f-correo', 'f-fuente', 'f-orden', 'f-umbral'];
+  'f-estado', 'f-correo', 'f-fuente', 'f-nivel', 'f-orden', 'f-umbral'];
 
 /* Filtros que aceptan varios valores a la vez. Un vendedor no trabaja "el
    tier 1": trabaja "tier 1 y 2 de la Metropolitana y Valparaíso". Obligar
@@ -112,7 +112,8 @@ const CAMPOS_FILTRO = ['buscar', 'f-tier', 'f-canal', 'f-region', 'f-ate',
 const MULTI = ['f-tier', 'f-canal', 'f-region', 'f-estado'];
 const ETIQUETA_FILTRO = {
   buscar: 'Búsqueda', 'f-tier': 'Tier', 'f-canal': 'Canal', 'f-region': 'Región',
-  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-correo': 'Correo', 'f-fuente': 'Fuente', 'f-umbral': 'Dolor',
+  'f-ate': 'ATE', 'f-estado': 'Estado', 'f-correo': 'Correo', 'f-fuente': 'Fuente',
+  'f-nivel': 'Nivel', 'f-umbral': 'Dolor',
 };
 
 // ---------- presentación ----------
@@ -165,10 +166,30 @@ function porQue(p) {
    a mano no debe pisarse nunca en una recarga. */
 const FUENTES = {
   oficial: ['Oficial', 'Nómina del MINEDUC'],
+  directorio: ['Directorio', 'Base de correos por establecimiento'],
   cosecha: ['Web', 'Raspado del sitio del colegio'],
   web: ['Web', 'Raspado del sitio del colegio'],
   manual: ['A mano', 'Escrito por el equipo'],
 };
+
+/* Qué imparte el establecimiento. La base de prospección son los colegios
+   con básica regular; el resto se agregó después y va marcado, porque un
+   jardín infantil o un liceo industrial no compran un programa de
+   matemática de 1º a 8º y no deben colarse en un segmento de campaña. */
+const NIVELES = {
+  basica: '',
+  revisar: 'Por revisar',
+  especial: 'Ed. especial',
+  media: 'Media / TP',
+  parvularia: 'Párvulos',
+  adultos: 'Adultos',
+  sinmatricula: 'Sin matrícula',
+};
+
+function marcaNivel(nivel) {
+  const n = NIVELES[String(nivel || '').toLowerCase()];
+  return n ? ` · <span class="nivel-otro">${esc(n)}</span>` : '';
+}
 
 function marcaFuente(fuente) {
   const f = FUENTES[String(fuente || '').toLowerCase()];
@@ -300,21 +321,13 @@ function consultaProspectos(desde) {
       if (cond) partes.push(cond);
       partes.push(orderBy('dolorMate', 'desc'));
     }
-  } else if (fuentePedida()) {
-    /* Filtrar por fuente sólo en la página cargada no servía: 373
-       oficiales repartidos entre 7.808 dan unos catorce por página de
-       300, y armar "la campaña de los oficiales" exigía pulsar "cargar
-       más" veintitantas veces. Se piden todos de una, sin ordenar en el
-       servidor —así basta el índice automático de un campo— y el resto
-       de los filtros y el orden los aplica el cliente, que ya lo hacía. */
-    partes.push(where('contactoFuente', '==', fuentePedida()));
-    partes.push(limit(2000));
-    return query(...partes);
   } else {
     const texto = normalizar($('buscar').value).trim();
     const palabra = texto.split(/\s+/).filter((p) => p.length >= 3)[0];
+    const directo = filtroDirecto();
     const cond = condicionMulti(['f-tier', 'f-canal', 'f-region', 'f-estado']);
     if (palabra) partes.push(where('tokens', 'array-contains', palabra));
+    else if (directo) partes.push(where(directo[0], '==', directo[1]));
     else if (cond) partes.push(cond);
     else if ($('f-ate').value) partes.push(where('requiereAte', '==', $('f-ate').value === 'si'));
     partes.push(orderBy($('f-orden').value || 'matBasica', 'desc'));
@@ -325,12 +338,25 @@ function consultaProspectos(desde) {
   return query(...partes);
 }
 
-/* La fuente que se pidió al servidor. "sin" no se puede pedir: en
-   Firestore un campo ausente no coincide con nada, así que ése se
-   resuelve en el cliente sobre la página, como antes. */
-function fuentePedida() {
-  const v = $('f-fuente').value;
-  return v && v !== 'sin' && estado.vista === 'prospectos' ? v : '';
+/* Los dos filtros que apuntan a un campo suelto y valen sobre toda la
+   base: de dónde salió el contacto y qué nivel imparte el colegio.
+
+   Antes la fuente se pedía por su cuenta, con tope de 2.000 y sin "cargar
+   más". Con 373 oficiales daba igual; con la base ampliada, "Directorio"
+   calza con casi doce mil y ese tope habría escondido miles sin decir
+   nada. Ahora entra por la misma puerta que los demás filtros: mismo
+   orden, misma página, mismo botón de cargar más.
+
+   "Sin marcar" no se puede pedir: en Firestore un campo ausente no
+   coincide con nada, así que ése se afina en el cliente sobre la página.
+   Va uno solo al servidor —el otro lo afina el cliente— porque combinar
+   dos exige un índice por cada par. */
+function filtroDirecto() {
+  const fuente = $('f-fuente').value;
+  if (fuente && fuente !== 'sin') return ['contactoFuente', fuente];
+  const nivel = $('f-nivel').value;
+  if (nivel) return ['nivel', nivel];
+  return null;
 }
 
 async function cargarProspectos({ continuar = false } = {}) {
@@ -363,7 +389,7 @@ async function cargarProspectos({ continuar = false } = {}) {
     if (vista === 'oportunidades') for (const f of filas) f._oport = oportunidadDe(f);
     estado[vista] = continuar ? estado[vista].concat(filas) : filas;
     estado.ultimoDoc = snap.docs[snap.docs.length - 1] || null;
-    estado.hayMas = !fuentePedida() && snap.docs.length === PAGINA;
+    estado.hayMas = snap.docs.length === PAGINA;
     limpiarError();
   } catch (e) {
     if (mio === estado.peticion) mostrarError(e);
@@ -379,7 +405,8 @@ async function cargarProspectos({ continuar = false } = {}) {
 
 function filtrar(filas) {
   const texto = normalizar($('buscar').value).trim();
-  const [ate, correo, fuente] = ['f-ate', 'f-correo', 'f-fuente'].map((i) => $(i).value);
+  const [ate, correo, fuente, nivel] = ['f-ate', 'f-correo', 'f-fuente', 'f-nivel']
+    .map((i) => $(i).value);
   // Un conjunto vacío no filtra: significa "todos", no "ninguno".
   const tier = estado.multi['f-tier'];
   const canal = estado.multi['f-canal'];
@@ -396,6 +423,10 @@ function filtrar(filas) {
       // "sin" agrupa lo que llegó antes de que se registrara el origen.
       if (fuente === 'sin' ? suya !== '' : suya !== fuente) return false;
     }
+    // Sólo cuenta en prospectos, que es la única vista donde el selector
+    // se ve: un filtro que sigue actuando después de esconderse vacía la
+    // pantalla sin que quede a la vista quién la vació.
+    if (nivel && estado.vista === 'prospectos' && String(f.nivel || '') !== nivel) return false;
     if (correo) {
       const tiene = Boolean(String(f.email || '').trim() || (f.emails || []).length);
       if (tiene !== (correo === 'si')) return false;
@@ -453,7 +484,8 @@ const FILA = {
   prospectos: (p) => `
     <td>${distintivoTier(p.tierNum)}</td>
     <td><div class="nombre">${esc(p.establecimiento)}</div>
-      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)} · ${esc(administra(p))}</div></td>
+      <div class="sub">RBD ${esc(p.rbd)} · ${esc(p.comuna)}, ${esc(p.region)}
+        · ${esc(administra(p))}${marcaNivel(p.nivel)}</div></td>
     <td>${esc(p.canal)}</td>
     <td>${distintivoAte(p.requiereAte)}</td>
     <td>${celdaMate(p)}</td>
@@ -541,6 +573,11 @@ function pintar() {
   // Se esconde la caja completa —control y su "?"— y no sólo el select.
   $('caja-umbral').classList.toggle('oculto', v !== 'oportunidades');
   $('caja-orden').classList.toggle('oculto', v === 'oportunidades');
+  /* El nivel sólo tiene sentido sobre prospectos: las cuentas y las redes
+     no lo llevan, y en Oportunidades el orden lo manda el SIMCE, que un
+     jardín infantil no tiene. Dejarlo visible ahí sólo permitiría vaciar
+     la pantalla sin explicación. */
+  $('caja-nivel').classList.toggle('oculto', v !== 'prospectos');
 
   $(`n-${v}`).textContent = numero(filas.length);
   pintarChips();
@@ -590,6 +627,7 @@ function pintarChips() {
   for (const id of CAMPOS_FILTRO) {
     if (id === 'f-orden') continue;
     if (id === 'f-umbral' && estado.vista !== 'oportunidades') continue;
+    if (id === 'f-nivel' && estado.vista !== 'prospectos') continue;
     const etiqueta = ETIQUETA_FILTRO[id];
     // No repetir la etiqueta si la opción ya la dice: "ATE: Sin requisito ATE"
     const rotular = (texto) => (normalizar(texto).includes(normalizar(etiqueta))
@@ -738,8 +776,21 @@ async function cargarPanel() {
     const ESTADOS_PANEL = ['nuevo', 'contacto_ok', 'contactado', 'respondio',
       'reunion', 'propuesta', 'ganado', 'descartado'];
 
+    /* El panel describe la base de prospección: los colegios con básica
+       regular. Después se agregaron jardines, liceos y escuelas
+       especiales, y sin acotar, "con contacto" saltaba cuatro mil de un
+       día para otro sin que nadie hubiera hecho nada. Si todavía no se
+       corrió la marcación, no hay a qué acotar y se cuenta todo: mejor un
+       número amplio que un panel en cero. */
+    const [enBasica, enTotal] = await Promise.all([
+      contarProspectos(where('nivel', '==', 'basica')),
+      contarProspectos(),
+    ]);
+    const soloBasica = enBasica ? [where('nivel', '==', 'basica')] : [];
+    const agregados = enBasica ? Math.max(0, enTotal - enBasica) : 0;
+
     const [porEstado, dolores, tiers, sinAte] = await Promise.all([
-      Promise.all(ESTADOS_PANEL.map((e) => contarProspectos(where('estadoCrm', '==', e)))),
+      Promise.all(ESTADOS_PANEL.map((e) => contarProspectos(...soloBasica, where('estadoCrm', '==', e)))),
       Promise.all([
         contarProspectos(where('dolorMate', '>=', 85)),
         contarProspectos(where('dolorMate', '>=', 60), where('dolorMate', '<', 85)),
@@ -747,7 +798,7 @@ async function cargarPanel() {
         contarProspectos(where('dolorMate', '>=', 0), where('dolorMate', '<', 35)),
       ]),
       Promise.all([1, 2, 3].map((n) => contarProspectos(where('tierNum', '==', n)))),
-      contarProspectos(where('requiereAte', '==', false)),
+      contarProspectos(...soloBasica, where('requiereAte', '==', false)),
     ]);
 
     const enGestion = porEstado[2] + porEstado[3] + porEstado[4];
@@ -757,6 +808,9 @@ async function cargarPanel() {
       { e: 'Sin requisito ATE', v: numero(sinAte), n: 'colegios de venta directa' },
       { e: 'En gestión', v: numero(enGestion), n: 'contactado → propuesta' },
       { e: 'Ganados', v: numero(porEstado[5]), n: 'contratos cerrados' },
+      ...(agregados
+        ? [{ e: 'Fuera de básica', v: numero(agregados), n: 'agregados, filtro «Nivel»' }]
+        : []),
     ].map((k) => `<div class="kpi"><div class="etiqueta">${esc(k.e)}</div>
       <div class="valor">${esc(k.v)}</div><div class="nota">${esc(k.n)}</div></div>`).join('');
 
@@ -1236,6 +1290,12 @@ function descripcionSegmento() {
   lista('f-region', (v) => v);
   if ($('f-ate').value) p.push($('f-ate').value === 'no' ? 'sin ATE' : 'requiere ATE');
   lista('f-estado', (v) => ETIQUETA_ESTADO[v] || v);
+  /* La fuente y el nivel se leen del propio selector: es la descripción
+     que queda pegada a la campaña para siempre, y "Educación especial"
+     dicho ahí evita tener que reconstruir después a quién se le escribió. */
+  for (const id of ['f-fuente', 'f-nivel']) {
+    if ($(id).value) p.push($(id).selectedOptions[0]?.textContent.trim() || $(id).value);
+  }
   if (estado.vista === 'oportunidades') {
     const [a, b] = tramoDolor();
     p.push(b === null ? `dolor ${a}+` : `dolor ${a} a ${b}`);
@@ -2288,7 +2348,7 @@ $('filtros').addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarPaneles(); });
 
-for (const id of ['f-ate', 'f-correo', 'f-fuente', 'f-orden', 'f-umbral']) {
+for (const id of ['f-ate', 'f-correo', 'f-fuente', 'f-nivel', 'f-orden', 'f-umbral']) {
   $(id).addEventListener('change', () => { guardarFiltros(); alFiltrar({ inmediato: true }); });
 }
 $('mas').addEventListener('click', () => cargarProspectos({ continuar: true }));

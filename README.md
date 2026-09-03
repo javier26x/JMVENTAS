@@ -139,9 +139,48 @@ python3 scripts/enriquecer-contactos.py --csv datos/prospectos_jumpmath.csv \
 node firebase/actualizar-contactos.mjs --admin --csv datos/prospectos_jumpmath.csv
 ```
 
+### 4. Base de correos por establecimiento
+
+Si consigues una planilla con varios correos por RBD ya clasificados (casilla del colegio, dominio del sostenedor, correo personal), entra por otra puerta: `agregar-colegios.mjs`, que además **crea** los establecimientos que la base de prospección no tiene.
+
+El CSV se espera con una fila por correo y estas columnas:
+
+```
+rbd,correo,tipo,nombre,comuna,dependencia,matricula,rut_sostenedor,telefono,director
+```
+
+`tipo` es `colegio`, `red`, `personal` o `dudoso`. Los `dudoso` se descartan; del resto se guardan hasta tres direcciones por colegio, la mejor primero, porque **sólo la primera recibe la campaña**.
+
+```bash
+# El nombre importa: .gitignore tiene que cubrirlo o el cargador se niega.
+mv ~/descargas/correosclasificados.csv datos/correos-clasificados.csv
+
+node firebase/agregar-colegios.mjs --admin --csv datos/correos-clasificados.csv --dry-run
+node firebase/agregar-colegios.mjs --admin --csv datos/correos-clasificados.csv
+```
+
+Qué hace con cada RBD:
+
+- **Ya está en la base** → le suma las direcciones que le faltan. No pisa lo escrito a mano, y no mueve del primer puesto un correo institucional que ya se estaba usando: sólo lo desplaza uno de mejor clase, como cuando había un gmail y aparece la casilla del colegio.
+- **No está** → lo crea, marcado en `nivel` con lo que imparte: `especial`, `parvularia`, `media`, `adultos`, `sinmatricula` o `revisar`.
+
+Ese marcado no es cosmético. La base de prospección son los **colegios con básica regular**, que son los que pueden usar JUMP Math de 1º a 8º; un jardín infantil o un liceo industrial no compran el programa, y mezclados sin marca contaminan cada segmento de campaña. Los agregados quedan sin tier, sin puntaje y con matrícula de básica en cero, así que caen al final de toda lista ordenada y no compiten con los prospectos reales. En el CRM se filtran con **Nivel**, y el panel los cuenta aparte.
+
+`revisar` es el que vale la pena mirar: son escuelas con matrícula que parecen básica y que la base no tenía.
+
+Para cargar sólo una parte:
+
+```bash
+# sólo completar los que ya están, sin crear ninguno
+node firebase/agregar-colegios.mjs --admin --csv datos/correos-clasificados.csv --solo-existentes
+
+# crear únicamente los dudosos de clasificar
+node firebase/agregar-colegios.mjs --admin --csv datos/correos-clasificados.csv --niveles revisar
+```
+
 ### Qué esperar de verdad
 
-**No existe una fuente con los 7.808 correos.** La cobertura realista, por segmento:
+**Ninguna fuente pública trae los 7.808 correos, y las que cubren casi todo lo hacen con calidad despareja**: en la base de correos por establecimiento, cerca de un tercio de los colegios sólo tiene una casilla de gmail o hotmail. Sirve para llegar, no para dar por verificado. La cobertura realista por segmento, cuando se raspa colegio por colegio:
 
 | Segmento | EE | Expectativa | Por qué |
 |---|---:|---|---|
@@ -152,7 +191,9 @@ node firebase/actualizar-contactos.mjs --admin --csv datos/prospectos_jumpmath.c
 
 Para las ~2.700 rurales el correo del establecimiento no es el camino: **se venden por sostenedor**, y ahí el contacto es el DAEM o el SLEP, que sí es público. Perseguir esos correos uno a uno es trabajo perdido — un municipio con 30 escuelas rurales es un solo contrato.
 
-`actualizar-contactos.mjs` nunca pisa un contacto ya verificado a mano con uno cosechado, y marca `estadoCrm` como `contacto_ok` cuando aparece un correo nuevo, así el CRM refleja el avance.
+`actualizar-contactos.mjs` nunca pisa un contacto ya verificado a mano con uno cosechado, y marca `estadoCrm` como `contacto_ok` cuando aparece un correo nuevo, así el CRM refleja el avance. Ojo: por lo mismo, **salta el colegio que ya tiene correo**. Para corregir una cosecha anterior con datos mejores hay que pasarle `--forzar`, que respeta igual lo marcado como «A mano».
+
+Los CSV con correos de personas nunca van al repositorio: `.gitignore` cubre `datos/*contact*.csv`, `*correo*.csv`, `*clasificad*.csv` y `*directorio*.csv`, y `agregar-colegios.mjs` se niega a leer un archivo que git no esté ignorando.
 
 ## Completar los contactos que faltan
 

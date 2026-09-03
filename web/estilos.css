@@ -822,6 +822,17 @@ button.peligro:hover { color: var(--critico); border-color: var(--critico); }
 .fuente-contacto.f-oficial { color: var(--ok); border-color: var(--ok); }
 .fuente-contacto.f-manual { color: var(--titulo); border-color: var(--titulo); }
 
+/* Los establecimientos que no imparten básica regular. No es un adorno:
+   marca a quién no debería llegarle una campaña de matemática de 1º a 8º,
+   y va en la misma línea del nombre para que se vea antes de elegirlo. */
+.nivel-otro {
+  font-weight: 600;
+  /* El amarillo de aviso puro no se lee a 12px sobre fondo claro; mezclado
+     con la tinta conserva el sentido y gana contraste. */
+  color: color-mix(in srgb, var(--aviso) 70%, var(--tinta));
+  border-bottom: 1px dotted currentColor;
+}
+
 /* Secciones plegadas: el ajuste que se toca una vez no debe ocupar lo
    mismo que el que se mira siempre. */
 .tarjeta.plegable { padding: 0; }

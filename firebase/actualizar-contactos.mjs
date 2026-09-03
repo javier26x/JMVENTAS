@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { firebaseConfig, comprobarFirestore } from './config.mjs';
+import { leerCsv } from './csv.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.dirname(AQUI);
@@ -59,31 +60,6 @@ const FORZAR = tiene('--forzar');
 const CSV = valor('--csv', 'datos/contactos-oficiales.csv');
 const DESDE = Number(valor('--desde', 0)) || 0;
 const FUENTE = valor('--fuente', 'oficial');
-
-// Parser CSV mínimo con soporte de comillas: los nombres traen comas.
-function leerCsv(ruta) {
-  const texto = fs.readFileSync(ruta, 'utf8').replace(/^﻿/, '');
-  const filas = [];
-  let campo = '';
-  let fila = [];
-  let enComillas = false;
-  for (let i = 0; i < texto.length; i += 1) {
-    const c = texto[i];
-    if (enComillas) {
-      if (c === '"' && texto[i + 1] === '"') { campo += '"'; i += 1; }
-      else if (c === '"') enComillas = false;
-      else campo += c;
-    } else if (c === '"') enComillas = true;
-    else if (c === ',') { fila.push(campo); campo = ''; }
-    else if (c === '\n') { fila.push(campo); filas.push(fila); fila = []; campo = ''; }
-    else if (c !== '\r') campo += c;
-  }
-  if (campo || fila.length) { fila.push(campo); filas.push(fila); }
-  const cab = filas.shift().map((h) => h.trim().toUpperCase());
-  return filas
-    .filter((f) => f.length === cab.length)
-    .map((f) => Object.fromEntries(cab.map((h, i) => [h, (f[i] || '').trim()])));
-}
 
 async function backend() {
   if (ADMIN) {

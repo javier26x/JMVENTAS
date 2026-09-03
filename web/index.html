@@ -169,11 +169,31 @@
           <select id="f-fuente">
             <option value="">Fuente: todas</option>
             <option value="oficial">Oficial · nómina MINEDUC</option>
+            <option value="directorio">Directorio · base de correos</option>
             <option value="cosecha">Web · raspado del sitio</option>
             <option value="manual">A mano · escrito por el equipo</option>
             <option value="sin">Sin marcar</option>
           </select>
           <button type="button" class="ayuda" data-ayuda="f-fuente" aria-label="Qué significa">?</button>
+        </span>
+        <span class="campo-filtro" id="caja-nivel">
+          <!-- La base de prospección son los colegios con básica regular.
+               Todo lo demás entró después y va marcado: un jardín infantil
+               no compra un programa de matemática de 1º a 8º.
+               Sólo se muestra en Prospectos: en Oportunidades el orden lo
+               manda el SIMCE, que estos establecimientos no tienen, así
+               que el filtro sólo podría dejar la pantalla en blanco. -->
+          <select id="f-nivel">
+            <option value="">Nivel: todos</option>
+            <option value="basica">Sólo básica regular</option>
+            <option value="revisar">Por revisar · parece básica</option>
+            <option value="especial">Educación especial</option>
+            <option value="media">Media / técnico-profesional</option>
+            <option value="parvularia">Párvulos</option>
+            <option value="adultos">Adultos</option>
+            <option value="sinmatricula">Sin matrícula</option>
+          </select>
+          <button type="button" class="ayuda" data-ayuda="f-nivel" aria-label="Qué significa">?</button>
         </span>
         <span class="campo-filtro oculto" id="caja-umbral">
           <!-- "60+" incluye a los críticos a propósito: son los que más

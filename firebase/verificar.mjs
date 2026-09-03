@@ -14,6 +14,10 @@ import { firebaseConfig, comprobarFirestore, CONSOLA_FIRESTORE } from './config.
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN = process.argv.includes('--admin');
 
+/* Mínimos, no cantidades exactas. `prospectos` es 7.808 mientras la base
+   sea sólo la de básica regular; con firebase/agregar-colegios.mjs crece,
+   y exigir igualdad convertía cada ampliación en un "FALLA" que no lo es.
+   Por debajo del mínimo sí es una carga incompleta. */
 const ESPERADO = { prospectos: 7808, redes: 325, cuentas: 24, meta: 1 };
 
 async function conAdmin() {
@@ -64,9 +68,10 @@ const main = async () => {
   let ok = true;
   for (const [col, esperado] of Object.entries(ESPERADO)) {
     const n = await api.contar(col);
-    const bien = n === esperado;
+    const bien = n >= esperado;
     ok &&= bien;
-    console.log(`  ${bien ? 'OK  ' : 'FALLA'} ${col.padEnd(12)} ${n} / ${esperado}`);
+    const extra = n > esperado ? `  (+${n - esperado} agregados)` : '';
+    console.log(`  ${bien ? 'OK  ' : 'FALLA'} ${col.padEnd(12)} ${n} / ${esperado} mínimo${extra}`);
   }
 
   console.log('\nTop 5 cuentas por matrícula:');
