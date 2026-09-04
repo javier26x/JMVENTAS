@@ -474,6 +474,35 @@ const partes = (s) => String(s || '').split(';').map((x) => x.trim()).filter(Boo
    servicio local, y con quién se negocia es media venta. */
 const administra = (p) => (p.slep ? `SLEP ${p.slep}` : p.dependencia || p.canal || '');
 
+/* Quién administra el colegio, en corto. No es un dato más: decide todo
+   el proceso de venta. Un particular pagado firma con el propio colegio;
+   un municipal o un SLEP compran con recursos públicos, piden Registro
+   ATE y tardan meses. Leer "Municipal" antes de llamar cambia la llamada.
+   Va abreviado porque en una lista compite con el nombre del colegio, que
+   es lo que se busca. */
+const TIPOS = {
+  'municipal/daem': 'Municipal',
+  municipal: 'Municipal',
+  slep: 'SLEP',
+  'particular subvencionado': 'Part. subvencionado',
+  'particular pagado': 'Part. pagado',
+  'corp. adm. delegada': 'Adm. delegada',
+  'administración delegada': 'Adm. delegada',
+};
+
+function tipoColegio(p) {
+  const dep = String(p?.dependencia || '').trim().toLowerCase();
+  if (TIPOS[dep]) return TIPOS[dep];
+  if (dep) return p.dependencia;
+  // Sin dependencia queda el canal, que empieza por la letra del canal.
+  const canal = String(p?.canal || '');
+  if (/municipal|daem/i.test(canal)) return 'Municipal';
+  if (/slep/i.test(canal)) return 'SLEP';
+  if (/subvencionad/i.test(canal)) return 'Part. subvencionado';
+  if (/privado|pagado/i.test(canal)) return 'Part. pagado';
+  return '';
+}
+
 const FILA = {
   oportunidades: (p) => `
     <td class="num"><span class="oport">${p._oport ?? '—'}</span></td>
@@ -1024,7 +1053,8 @@ function pintarHoy() {
   const ficha = (p, extra) => `<li>
       <button class="hoy-fila" data-ficha="${esc(p.id)}">
         <span class="nombre">${esc(p.establecimiento || p.id)}</span>
-        <span class="sub">${esc(p.comuna || '')}${extra ? ` · ${extra}` : ''}</span>
+        <span class="sub">${esc([p.comuna, tipoColegio(p)].filter(Boolean).join(' · '))}${
+  extra ? ` · ${extra}` : ''}</span>
       </button></li>`;
 
   const pilas = [
@@ -1924,11 +1954,12 @@ async function abrirDetalle(id) {
   pintarDestinatarios();
   $('detalle-cargando').classList.add('oculto');
 
-  /* Las direcciones de hoy se buscan después de pintar, no antes: son una
-     lectura por destinatario, y hacer esperar la tabla entera por una
-     columna secundaria es cambiar lo que se mira siempre por lo que se
-     mira a veces. Cuando llegan, la tabla se repinta con las marcas. */
-  if (enviados === 0) return;
+  /* Cómo está hoy cada colegio —su dirección y quién lo administra— se
+     busca después de pintar, no antes: es una lectura por destinatario, y
+     hacer esperar la tabla entera por un dato de apoyo es cambiar lo que
+     se mira siempre por lo que se mira a veces. Cuando llega, la tabla se
+     repinta con el tipo de colegio y con las direcciones nuevas. */
+  if (!dest.length) return;
   const mio = id;
   revisarDirecciones().then((r) => {
     if (estado.campanaActual?.id !== mio) return;   // ya abrió otra campaña
@@ -2058,9 +2089,15 @@ function pintarDestinatarios() {
   $('corte-correo-nuevo').classList.toggle('oculto', cambios === 0);
   $('corte-correo-nuevo').textContent = `Cambiaron de correo · ${numero(cambios)}`;
 
+  /* El tipo de colegio no está en el destinatario guardado —ahí sólo vive
+     lo que hacía falta para mandar el correo—, así que sale del prospecto,
+     que se lee en segundo plano al abrir el detalle. Mientras no llegue,
+     la fila se pinta igual sin él. */
+  const prospectos = estado.direcciones?.prospectos;
   $('cuerpo-destinatarios').innerHTML = filas.map((d) => `<tr>
     <td><div class="nombre">${esc(d.establecimiento)}</div>
-      <div class="sub">RBD ${esc(d.rbd)} · ${esc(d.comuna)}${
+      <div class="sub">RBD ${esc(d.rbd)} · ${esc([d.comuna,
+    tipoColegio(prospectos?.get(String(d.rbd ?? d.id)))].filter(Boolean).join(' · '))}${
   conVariantes ? ` · variante ${esc(d.variante || 'A')}` : ''}</div></td>
     <td>${d.email ? `<a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : '<span class="sin-contacto">sin correo</span>'}${celdaCorreoNuevo(d)}</td>
     <td><span class="env ${esc(d.estado)}">${esc(d.estado)}</span></td>
@@ -2111,25 +2148,32 @@ function crearSeguimiento() {
    reenviar; entran por el segmento normal como cualquier otro. */
 const SALIO = ['enviado', 'abierto', 'respondido', 'rebotado', 'baja'];
 
-/* Qué dirección tiene hoy cada colegio de una campaña, y cuáles de esos
-   cambios se pueden reenviar.
+/* Los colegios de una campaña tal como están hoy: qué dirección tienen y
+   quién los administra. Del destinatario guardado sólo se sabe lo que era
+   verdad el día del envío.
 
-   Una sola pasada para las dos cosas. La marca de la tabla y el número
-   del botón tienen que salir del mismo cálculo: ver cinco colegios
-   marcados y un botón que ofrece tres, sin poder saber cuáles faltan, es
-   peor que no marcar nada. Por eso cada cambio guarda también el motivo
-   por el que no entra, y la tabla lo muestra al lado. */
+   Una sola pasada para las dos cosas, y el mismo cálculo detrás de la
+   marca de la tabla y del número del botón: ver cinco colegios marcados y
+   un botón que ofrece tres, sin poder saber cuáles faltan, es peor que no
+   marcar nada. Por eso cada cambio guarda también el motivo por el que no
+   entra, y la tabla lo muestra al lado. */
 async function revisarDirecciones() {
   const salieron = estado.destinatarios.filter((d) => SALIO.includes(d.estado));
   const cambios = new Map();
   const podas = { igual: 0, sinCorreo: 0, baja: 0, respondio: 0, enCurso: 0, repetido: 0 };
-  if (!salieron.length) return { cambios, lista: [], podas, salieron: 0 };
+  if (!estado.destinatarios.length) {
+    return { cambios, lista: [], podas, salieron: 0, prospectos: new Map() };
+  }
 
+  /* Se leen todos los destinatarios y no sólo los que salieron: el tipo de
+     colegio se muestra en cada fila, también en las que quedaron
+     pendientes. Es la misma consulta, en bloques de treinta. */
   const [mapa, bajas] = await Promise.all([
-    mail.leerProspectos(db, salieron.map((d) => d.rbd ?? d.id)),
+    mail.leerProspectos(db, estado.destinatarios.map((d) => d.rbd ?? d.id)),
     mail.cargarBajas(db).catch(() => estado.bajas),
   ]);
   estado.bajas = bajas;
+  if (!salieron.length) return { cambios, lista: [], podas, salieron: 0, prospectos: mapa };
 
   const porCasilla = new Map();
   for (const d of salieron) {
@@ -2178,7 +2222,9 @@ async function revisarDirecciones() {
     cambios.get(String(perdedor.rbd)).motivo = 'otro colegio comparte esta casilla';
     if (gana) porCasilla.set(ahora, fila);
   }
-  return { cambios, lista: [...porCasilla.values()], podas, salieron: salieron.length };
+  return {
+    cambios, lista: [...porCasilla.values()], podas, salieron: salieron.length, prospectos: mapa,
+  };
 }
 
 /* Reenviar una campaña a los colegios que cambiaron de dirección.
