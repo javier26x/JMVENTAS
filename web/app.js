@@ -2625,9 +2625,6 @@ async function conectar(leer) {
     mostrarError(e.code ? { message: mensajeDeAcceso(e) } : e);
   }
 }
-$('conectar-gmail').addEventListener('click', () => conectar(true));
-$('conectar-solo-envio').addEventListener('click', () => conectar(false));
-
 /* Conectar solo al abrir la app. Sin esto, el permiso guardado seguiría
    ahí pero habría que pulsar un botón para usarlo, que es justo la
    molestia que se quería quitar. */
@@ -3007,9 +3004,33 @@ for (const id of ['c-fecha', 'c-hora', 'c-cuando-ahora', 'c-cuando-luego']) {
 $('c-programar').addEventListener('click', programar);
 $('c-cancelar-prog').addEventListener('click', cancelarProgramacion);
 
+/* Los botones se repintan con el banner, así que las escuchas van
+   delegadas: enganchadas una a una quedarían muertas en cuanto la caja
+   se vuelve a dibujar. */
+$('gmail-estado').addEventListener('click', (e) => {
+  const b = e.target.closest('button[id]');
+  if (!b) return;
+  if (b.id === 'conectar-gmail') conectar(true);
+  if (b.id === 'conectar-solo-envio') conectar(false);
+  if (b.id === 'desconectar-gmail') desconectar();
+});
+
 function pintarEstadoGmail(correo, conLectura) {
   const caja = $('gmail-estado');
-  if (!correo) return;
+  if (!correo) {
+    caja.classList.remove('ok');
+    caja.innerHTML = `<div>
+        <strong>Gmail no conectado.</strong>
+        Los correos se envían desde tu cuenta con la API de Gmail.
+        Conéctala para poder enviar y detectar respuestas.
+      </div>
+      <div class="fila-botones">
+        <button class="primario" id="conectar-gmail">Conectar Gmail</button>${ay('conectar-gmail')}
+        <button class="fantasma" id="conectar-solo-envio">Solo enviar</button>${ay('conectar-solo-envio')}
+      </div>`;
+    $('d-revisar').disabled = true;
+    return;
+  }
   caja.classList.add('ok');
   /* Un @gmail.com funciona, pero llega peor y se lee peor: el director
      de un colegio decide en dos segundos si el remitente es una
@@ -3031,8 +3052,61 @@ function pintarEstadoGmail(correo, conLectura) {
         + '@jumpmath.cl (Google Workspace) entra mejor a bandeja de entrada '
         + 'y da más confianza a quien recibe.</em>'
       : '')
-    + '</div>';
+    + `</div>
+    <div class="fila-botones">
+      <button class="fantasma" id="desconectar-gmail">Desconectar</button>${ay('desconectar-gmail')}
+    </div>`;
   $('d-revisar').disabled = !conLectura;
+}
+
+/* Soltar la cuenta de envío. Son dos cosas y no una: el token de esta
+   pestaña, y el permiso duradero que el servidor guarda para despachar
+   lo programado con el navegador cerrado. Se puede querer sólo lo
+   primero —cambiar de cuenta acá— sin dejar sin salida la campaña del
+   lunes, así que se pregunta en vez de decidir por el usuario. */
+async function desconectar() {
+  const guardado = Boolean(estado.programado?.autorizacion);
+  if (!guardado) {
+    if (!confirm('Se suelta la cuenta de Gmail en este navegador. '
+      + 'Podrás volver a conectarla cuando quieras.\n\n¿Desconectar?')) return;
+    mail.desconectarGmail();
+    pintarEstadoGmail(null);
+    avisar('Gmail desconectado.');
+    return;
+  }
+
+  const soloAqui = confirm('Hay un permiso guardado en el servidor: es el que deja '
+    + 'salir solas las campañas programadas, con el navegador cerrado.\n\n'
+    + 'Aceptar: soltar la cuenta sólo en este navegador y dejar ese permiso puesto.\n'
+    + 'Cancelar: seguir para retirarlo del todo.');
+  if (soloAqui) {
+    mail.desconectarGmail();
+    pintarEstadoGmail(null);
+    avisar('Gmail desconectado en este navegador. El envío programado sigue activo.');
+    return;
+  }
+  if (!confirm('Se retira el permiso de envío programado.\n\n'
+    + 'Las campañas que estaban esperando su hora vuelven a borrador y no '
+    + 'saldrán solas. Habrá que autorizar de nuevo para volver a programar.\n\n'
+    + '¿Retirar la autorización?')) return;
+
+  const b = $('desconectar-gmail');
+  if (b) { b.disabled = true; b.textContent = 'Retirando…'; }
+  try {
+    const r = await mail.desautorizarProgramado(auth);
+    mail.desconectarGmail();
+    if (estado.programado) estado.programado.autorizacion = null;
+    pintarEstadoGmail(null);
+    await pintarCampanas();
+    avisar(r.liberadas
+      ? `Autorización retirada. ${numero(r.liberadas)} ${r.liberadas === 1
+        ? 'campaña programada vuelve' : 'campañas programadas vuelven'} a borrador.`
+      : 'Autorización retirada.');
+    limpiarError();
+  } catch (e) {
+    mostrarError(e.code ? { message: mensajeDeAcceso(e) } : e);
+    if (b) { b.disabled = false; b.textContent = 'Desconectar'; }
+  }
 }
 
 $('c-ver-grande').addEventListener('click', () => {

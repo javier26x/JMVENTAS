@@ -1296,6 +1296,21 @@ export async function autorizarProgramado(auth, clientId, { leer = true } = {}) 
   return j;
 }
 
+/**
+ * Suelta la cuenta de Gmail de esta pestaña.
+ *
+ * Sólo el token en memoria: el permiso guardado en el servidor, si lo
+ * hay, se retira aparte con desautorizarProgramado. Son dos cosas
+ * distintas y conviene poder hacer sólo la primera —cambiar de cuenta
+ * en este equipo sin tocar el envío programado del equipo entero.
+ */
+export function desconectarGmail() {
+  sesion.token = null;
+  sesion.correo = null;
+  sesion.expira = 0;
+  sesion.permisos = [];
+}
+
 /** Retira el permiso duradero y libera las campañas que esperaban. */
 export async function desautorizarProgramado(auth) {
   const idToken = await auth.currentUser.getIdToken();

@@ -223,6 +223,16 @@ export const AYUDA = {
     'Pide únicamente el permiso de envío, que Google clasifica como sensible '
     + 'y no como restringido. Se puede enviar, pero las respuestas hay que '
     + 'revisarlas a mano en la bandeja.'],
+  'desconectar-gmail': ['Desconectar la cuenta',
+    'Suelta la cuenta desde la que salen los correos. Son dos cosas y el '
+    + 'botón pregunta cuál quieres: soltar sólo el acceso de este navegador, '
+    + 'que sirve para cambiar de cuenta acá sin tocar nada más, o retirar '
+    + 'además el permiso guardado en el servidor. Ese permiso es el que deja '
+    + 'salir solas las campañas programadas con el navegador cerrado; al '
+    + 'retirarlo, las que estaban esperando vuelven a borrador y no salen. '
+    + 'Retirarlo tiene que ser tan fácil como darlo: un permiso para enviar '
+    + 'correo en tu nombre que sólo se quita entrando a la consola de Google '
+    + 'es un permiso que nadie quita.'],
   'c-nombre': ['Nombre interno',
     'Sólo para reconocer la campaña en el listado. El destinatario nunca lo ve.'],
   'c-asunto': ['Asunto automático',
