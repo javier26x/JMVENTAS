@@ -2658,6 +2658,7 @@ async function borrarCampana(id) {
 }
 
 async function conectar(leer) {
+  olvidarDiagnostico();
   try {
     // Si el permiso ya está guardado en el servidor no hay nada que
     // preguntarle a Google: pedir consentimiento otra vez sería hacerle
@@ -3453,7 +3454,34 @@ const redireccionLista = getRedirectResult(auth).catch((e) => {
   return null;
 });
 
+/* Lo que el servidor de Firebase respondió en este intento, si respondió.
+   Se vacía al empezar cada intento para no mezclar respuestas viejas. */
+const olvidarDiagnostico = () => { window.__authDiag = []; };
+function detalleDelServidor() {
+  const d = (window.__authDiag || []).slice(-1)[0];
+  if (!d) return '';
+  let texto = d.cuerpo;
+  try {
+    const j = JSON.parse(d.cuerpo);
+    texto = j?.error?.message || d.cuerpo;
+    const razon = j?.error?.errors?.[0]?.reason;
+    if (razon && !texto.includes(razon)) texto += ` (${razon})`;
+  } catch { /* no era JSON */ }
+  return ` Firebase respondió ${d.estado} en ${d.ruta}: ${texto.slice(0, 300)}`;
+}
+
 function mensajeDeAcceso(e) {
+  const base = textoDeAcceso(e);
+  /* Este código no lo produce el navegador: viene del servidor, o de la
+     ventana de Google. Cuál de los dos, y con qué texto, es justo lo que
+     hace falta saber para arreglarlo, así que va en el mensaje. */
+  if (e.code !== 'auth/provider-already-linked') return base;
+  const detalle = detalleDelServidor();
+  return base + (detalle || ' Firebase no llegó a consultar al servidor: el error salió de la '
+    + 'ventana de Google.');
+}
+
+function textoDeAcceso(e) {
   return {
     'auth/operation-not-allowed':
       'Falta habilitar el proveedor Google: Firebase Console → Authentication → Sign-in method → Google.',
@@ -3481,6 +3509,7 @@ $('entrar').addEventListener('click', async () => {
   b.disabled = true;
   b.textContent = 'Abriendo ventana de Google…';
   aviso.classList.add('oculto');
+  olvidarDiagnostico();
   try {
     // Nunca dos operaciones de acceso a la vez: ésa es la que rompe.
     await redireccionLista;

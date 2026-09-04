@@ -16,6 +16,36 @@
     var t = localStorage.getItem('jm.tema');
     if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
   } catch (e) { /* modo privado */ }
+
+  /* Qué dijo de verdad el servidor de Firebase Auth cuando algo falla.
+     El SDK convierte cualquier error del servidor en un código de guiones
+     y tira el cuerpo de la respuesta; el usuario ve "auth/tal-cosa" y
+     nadie sabe por qué. Se guarda el cuerpo de las respuestas fallidas
+     de identitytoolkit —sólo ésas, sólo en memoria, sólo para mostrarlo
+     en el recuadro de error— y se instala aquí porque tiene que estar
+     puesto antes de que el módulo del SDK se cargue. */
+  (function () {
+    var original = window.fetch;
+    window.__authDiag = [];
+    window.fetch = function (entrada, init) {
+      var url = typeof entrada === 'string' ? entrada : (entrada && entrada.url) || '';
+      var p = original.apply(this, arguments);
+      if (/identitytoolkit\.googleapis\.com/.test(url)) {
+        p.then(function (r) {
+          if (r.ok) return;
+          r.clone().text().then(function (cuerpo) {
+            window.__authDiag.push({
+              ruta: url.replace(/^.*\/v1\//, '').replace(/\?.*$/, ''),
+              estado: r.status,
+              cuerpo: String(cuerpo || '').slice(0, 800),
+              cuando: Date.now(),
+            });
+          }).catch(function () {});
+        }).catch(function () {});
+      }
+      return p;
+    };
+  }());
 </script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📐</text></svg>">
 </head>
