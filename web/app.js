@@ -3361,6 +3361,36 @@ $('lista-variables').addEventListener('click', (e) => {
   previsualizar();
 });
 
+/* ---------- tema ----------
+   Tres estados: claro, oscuro y el del sistema. El del sistema es el
+   único que sigue cambiando solo al anochecer, así que es el que queda
+   por defecto; los otros dos son una decisión explícita y se recuerdan.
+   La marca en <html> la pone también un script en la cabecera, antes de
+   pintar: acá sólo se mantiene el botón marcado y se cambia en caliente. */
+function aplicarTema(tema) {
+  const raiz = document.documentElement;
+  if (tema === 'light' || tema === 'dark') raiz.setAttribute('data-theme', tema);
+  else raiz.removeAttribute('data-theme');
+  for (const b of document.querySelectorAll('.tema button[data-tema]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.tema === (tema || 'auto')));
+  }
+}
+
+document.querySelector('.tema').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tema]');
+  if (!b) return;
+  const tema = b.dataset.tema;
+  aplicarTema(tema);
+  try {
+    if (tema === 'auto') localStorage.removeItem('jm.tema');
+    else localStorage.setItem('jm.tema', tema);
+  } catch { /* modo privado: el tema dura lo que la pestaña */ }
+});
+
+try {
+  aplicarTema(localStorage.getItem('jm.tema') || 'auto');
+} catch { aplicarTema('auto'); }
+
 // ---------- sesión ----------
 /* Completa el acceso cuando el flujo fue por redirección.
    Se guarda la promesa porque hay que esperarla antes de abrir un popup:

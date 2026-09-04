@@ -1,78 +1,201 @@
 /* ============================================================
    JUMP Math Chile — CRM comercial
-   Paleta validada con el validador de la guía de visualización:
-   la rampa ordinal de tiers pasa las cuatro comprobaciones en
-   ambos modos (monotonía, ΔL, contraste del extremo claro, un hue).
+
+   Dos temas sobre un mismo juego de tokens.
+
+   El claro es de vidrio, y el vidrio tiene un sitio: el cromo —el
+   riel de navegación, la ficha, los desplegables, el velo— flota
+   translúcido sobre un lienzo con luz; los datos van sobre material
+   opaco. La división no es estética. La pantalla que importa acá es
+   una tabla de 11.948 colegios, y una cifra leída a través de un
+   vidrio se lee peor: el vidrio va donde se navega, no donde se
+   decide. Por eso hay dos materiales y no uno.
+
+   El color sale de la identidad que la propia app manda en cada
+   correo —el navy y el rojo de JUMP Math— y no de una paleta de
+   herramienta genérica. La herramienta se parece a lo que vende.
+
+   La rampa ordinal de tiers no se toca: está validada con el
+   validador de la guía de visualización y pasa las cuatro
+   comprobaciones en ambos modos (monotonía, ΔL, contraste del
+   extremo claro, un solo hue). Comparte familia con el acento a
+   propósito: los dos son la marca, y el tier siempre lleva su texto.
    ============================================================ */
 
 :root {
   color-scheme: light;
 
-  --superficie:      #fcfcfb;
-  --plano:           #f9f9f7;
-  --tinta:           #0b0b0b;
-  --tinta-2:         #52514e;
-  --tinta-apagada:   #898781;
-  --linea:           #e1e0d9;
-  --borde:           rgba(11, 11, 11, 0.10);
+  /* Lienzo: el fondo del propio correo de JUMP, más frío y más
+     profundo. Un blanco plano no da nada que refractar y el vidrio
+     se convierte en un rectángulo gris. */
+  --lienzo:          #dbe3ef;
+  --luz-1:           rgba(20, 52, 92, .30);
+  --luz-2:           rgba(232, 68, 58, .09);
+
+  /* Material opaco: tablas, tarjetas, KPI, campos. */
+  --superficie:      #ffffff;
+  /* Hueco: lo que va embutido dentro de una tarjeta. */
+  --plano:           #eef2f8;
+
+  /* Vidrio: sólo el cromo. La opacidad es alta a propósito —debajo
+     pasa una tabla, no una fotografía— y el filo claro de arriba es
+     lo que lo hace vidrio y no un desenfoque. */
+  --vidrio:          rgba(255, 255, 255, .60);
+  --vidrio-fuerte:   rgba(255, 255, 255, .86);
+  --brillo:          rgba(255, 255, 255, .95);
+  --desenfoque:      saturate(180%) blur(22px);
+  --sombra:          0 1px 2px rgba(16, 42, 76, .05), 0 12px 32px rgba(16, 42, 76, .10);
+
+  --tinta:           #101a27;
+  --tinta-2:         #46566b;
+  --tinta-apagada:   #5f6d84;
+  --linea:           rgba(16, 42, 76, .11);
+  --borde:           rgba(16, 42, 76, .15);
 
   /* Rampa ordinal de tier: más difícil = más oscuro */
   --tier-1: #86b6ef;
-  --tier-2: #2a78d6;
+  --tier-2: #2773ce;
   --tier-3: #104281;
+  /* Qué color de texto aguanta cada peldaño. El del medio es el
+     único que cambia entre modos: en oscuro se aclara para separarse
+     del fondo y ahí el blanco encima ya no alcanza. */
+  --sobre-tier-1: #0b0b0b;
+  --sobre-tier-2: #ffffff;
+  --sobre-tier-3: #ffffff;
 
   /* Estado: siempre acompañado de texto, nunca color solo */
-  --ok:       #0ca30c;
-  --aviso:    #fab219;
-  --critico:  #d03b3b;
+  --ok:       #067a31;
+  --aviso:    #b8791a;
+  --critico:  #c8352b;
 
-  --acento:   #2a78d6;
-  --radio:    10px;
+  --acento:   #1d4e89;
+  /* Lo que va escrito encima del acento y del rojo. En claro es
+     blanco; en oscuro, donde esos dos colores se aclaran para
+     separarse del fondo, el blanco encima cae a 2,9:1 y hay que
+     invertirlo. */
+  --sobre-acento:  #ffffff;
+  --sobre-critico: #ffffff;
+  --radio:    12px;
 }
 
+/* El oscuro no es negro con un acento ácido: es el mismo navy bajado
+   hasta carbón, para que las dos versiones se reconozcan como la
+   misma herramienta. El vidrio sigue, más discreto y con el filo
+   arriba en vez de la sombra. */
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --superficie:    #1a1a19;
-    --plano:         #0d0d0d;
-    --tinta:         #ffffff;
-    --tinta-2:       #c3c2b7;
-    --tinta-apagada: #898781;
-    --linea:         #2c2c2a;
-    --borde:         rgba(255, 255, 255, 0.10);
+    --lienzo:        #0a1017;
+    --luz-1:         rgba(58, 122, 196, .26);
+    --luz-2:         rgba(232, 68, 58, .11);
+    --superficie:    #151d29;
+    --plano:         #101822;
+    --vidrio:        rgba(28, 39, 54, .72);
+    --vidrio-fuerte: rgba(28, 39, 54, .88);
+    --brillo:        rgba(255, 255, 255, .13);
+    --sombra:        0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+    --tinta:         #eaf0f8;
+    --tinta-2:       #a8b6c8;
+    --tinta-apagada: #78889d;
+    --linea:         rgba(255, 255, 255, .09);
+    --borde:         rgba(255, 255, 255, .13);
     --tier-1: #9ec5f4;
     --tier-2: #3987e5;
     --tier-3: #184f95;
-    --acento: #3987e5;
+    --sobre-tier-2: #0b0b0b;
+    --ok:       #3fc46a;
+    --aviso:    #e3a33c;
+    --critico:  #f0625a;
+    --acento:   #5b9bd8;
+    --sobre-acento:  #0a1622;
+    --sobre-critico: #0a1622;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --superficie:    #1a1a19;
-  --plano:         #0d0d0d;
-  --tinta:         #ffffff;
-  --tinta-2:       #c3c2b7;
-  --tinta-apagada: #898781;
-  --linea:         #2c2c2a;
-  --borde:         rgba(255, 255, 255, 0.10);
+  --lienzo:        #0a1017;
+  --luz-1:         rgba(58, 122, 196, .26);
+  --luz-2:         rgba(232, 68, 58, .11);
+  --superficie:    #151d29;
+  --plano:         #101822;
+  --vidrio:        rgba(28, 39, 54, .72);
+  --vidrio-fuerte: rgba(28, 39, 54, .88);
+  --brillo:        rgba(255, 255, 255, .13);
+  --sombra:        0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+  --tinta:         #eaf0f8;
+  --tinta-2:       #a8b6c8;
+  --tinta-apagada: #78889d;
+  --linea:         rgba(255, 255, 255, .09);
+  --borde:         rgba(255, 255, 255, .13);
   --tier-1: #9ec5f4;
   --tier-2: #3987e5;
   --tier-3: #184f95;
-  --acento: #3987e5;
+  --sobre-tier-2: #0b0b0b;
+  --ok:       #3fc46a;
+  --aviso:    #e3a33c;
+  --critico:  #f0625a;
+  --acento:   #5b9bd8;
+  --sobre-acento:  #0a1622;
+  --sobre-critico: #0a1622;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--plano);
+  background: var(--lienzo);
   color: var(--tinta);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
+/* La luz del lienzo. Va fija y detrás de todo: es lo que el riel y la
+   ficha refractan al pasar por encima, y sin ella el vidrio no tiene
+   nada que hacer. Dos focos y no un degradado de lado a lado, para
+   que el color cambie según por dónde se mire. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(70rem 50rem at 4% -16%, var(--luz-1), transparent 58%),
+    radial-gradient(54rem 42rem at 106% 74%, var(--luz-2), transparent 54%);
+}
+
+/* Foco de teclado visible en todo lo que se pueda alcanzar tabulando.
+   Va con desplazamiento para que no lo tape el borde de una celda. */
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 a { color: var(--acento); }
+
+/* Firefox con `layout.css.backdrop-filter` apagado, y cualquier navegador
+   que no lo soporte, verían el vidrio como un color semitransparente
+   sobre la tabla: ilegible. Ahí el cromo se vuelve opaco y se pierde el
+   efecto, que es lo prescindible. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --vidrio: #ffffff;
+    --vidrio-fuerte: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) { --vidrio: #151d29; --vidrio-fuerte: #151d29; }
+  }
+  :root[data-theme="dark"] { --vidrio: #151d29; --vidrio-fuerte: #151d29; }
+}
+
+/* Los datos van sobre material sólido, y se levantan del lienzo con una
+   sombra corta en vez de un borde marcado: sobre un fondo con luz, el
+   filete se ve sucio y la sombra se ve construida. */
+.kpi, .envoltura, .tarjeta, .pila, .aviso {
+  box-shadow: var(--sombra);
+}
 
 /* ---------- barra superior ---------- */
 .barra {
@@ -80,8 +203,11 @@ a { color: var(--acento); }
   align-items: center;
   gap: 16px;
   padding: 14px 22px;
-  background: var(--superficie);
-  border-bottom: 1px solid var(--linea);
+  background: var(--vidrio);
+  -webkit-backdrop-filter: var(--desenfoque);
+  backdrop-filter: var(--desenfoque);
+  box-shadow: inset 0 1px 0 var(--brillo);
+  border-bottom: 1px solid var(--borde);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -106,7 +232,7 @@ button { cursor: pointer; }
 button:hover { border-color: var(--acento); }
 button.primario {
   background: var(--acento);
-  color: #fff;
+  color: var(--sobre-acento);
   border-color: transparent;
   font-weight: 550;
   padding: 10px 18px;
@@ -170,7 +296,7 @@ button.fantasma { background: none; border-color: transparent; color: var(--tint
 }
 .pestanas button[aria-selected="true"] {
   background: var(--acento);
-  color: #fff;
+  color: var(--sobre-acento);
   font-weight: 550;
 }
 
@@ -211,12 +337,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
   white-space: nowrap;
 }
-.tier.t1 { background: var(--tier-1); color: #0b0b0b; }
-.tier.t2 { background: var(--tier-2); }
-.tier.t3 { background: var(--tier-3); }
+.tier.t1 { background: var(--tier-1); color: var(--sobre-tier-1); }
+.tier.t2 { background: var(--tier-2); color: var(--sobre-tier-2); }
+.tier.t3 { background: var(--tier-3); color: var(--sobre-tier-3); }
 
 /* Estado: icono + texto, el color nunca va solo.
    "Requiere ATE" va en tinta apagada a propósito: lo cumple el 95 % de
@@ -293,9 +418,14 @@ select.estado { padding: 4px 8px; font-size: 13px; max-width: 145px; }
    ============================================================ */
 .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
 
+/* El riel es la pieza de vidrio principal: queda fija mientras la tabla
+   corre por debajo, así que es la única superficie donde la
+   translucidez muestra movimiento real y no un tinte. */
 .lateral {
-  background: var(--superficie);
-  border-right: 1px solid var(--linea);
+  background: var(--vidrio);
+  -webkit-backdrop-filter: var(--desenfoque);
+  backdrop-filter: var(--desenfoque);
+  border-right: 1px solid var(--borde);
   padding: 18px 12px;
   display: flex;
   flex-direction: column;
@@ -304,6 +434,9 @@ select.estado { padding: 4px 8px; font-size: 13px; max-width: 145px; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  /* El filo. Sin esta línea clara arriba y a la izquierda, un panel
+     translúcido es un desenfoque; con ella tiene canto y espesor. */
+  box-shadow: inset 1px 1px 0 var(--brillo), 1px 0 24px rgba(16, 42, 76, .06);
 }
 .lateral .marca { font-weight: 650; font-size: 16px; padding: 4px 10px 0; letter-spacing: -0.01em; }
 .lateral .marca span { color: var(--tinta-apagada); font-weight: 400; }
@@ -341,16 +474,64 @@ button.nav em {
    vista sin tener que entrar a buscarla. */
 button.nav em.urgente {
   background: var(--critico);
-  color: #fff;
+  color: var(--sobre-critico);
   border-radius: 999px;
   padding: 1px 7px;
   font-weight: 600;
 }
 button.nav:hover { background: color-mix(in srgb, var(--acento) 8%, transparent); border-color: transparent; }
+/* La lente: la sección abierta no se marca con un fondo plano, se
+   ilumina. Vidrio con filo arriba y un halo del acento detrás, como
+   una pastilla encendida por dentro. Es el único sitio donde esta
+   pantalla se permite ser vistosa; todo lo demás va callado. */
 button.nav[aria-current="true"] {
-  background: color-mix(in srgb, var(--acento) 13%, transparent);
+  position: relative;
+  background: var(--vidrio-fuerte);
   color: var(--tinta);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 var(--brillo),
+    0 0 0 1px color-mix(in srgb, var(--acento) 22%, transparent),
+    0 6px 18px color-mix(in srgb, var(--acento) 22%, transparent);
+}
+button.nav[aria-current="true"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--acento) 15%, transparent),
+    transparent 70%);
+  pointer-events: none;
+}
+
+/* Selector de tema: un segmentado de vidrio, con la opción activa como
+   la misma lente del riel. Vive en el pie porque se toca una vez y no
+   debe competir con la navegación. */
+.tema {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--plano);
+  border: 1px solid var(--borde);
+}
+.tema button {
+  flex: 1;
+  border: none;
+  background: none;
+  border-radius: 999px;
+  padding: 6px 4px;
+  font-size: 11.5px;
+  color: var(--tinta-2);
+  min-height: 32px;
+}
+.tema button:hover { background: color-mix(in srgb, var(--acento) 10%, transparent); }
+.tema button[aria-pressed="true"] {
+  background: var(--superficie);
+  color: var(--tinta);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 var(--brillo), 0 1px 3px rgba(16, 42, 76, .16);
 }
 
 .lateral-pie { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 0 4px; }
@@ -450,17 +631,23 @@ button.nav[aria-current="true"] {
 /* ============================================================
    Ficha del establecimiento
    ============================================================ */
+/* El velo desenfoca la tabla en vez de taparla con negro: se sigue
+   viendo dónde se estaba, que es la mitad de por qué se abrió la ficha. */
 .velo {
   position: fixed; inset: 0; z-index: 40;
-  background: rgba(0, 0, 0, .32);
+  background: color-mix(in srgb, var(--lienzo) 45%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 .ficha {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 50;
   width: min(460px, 100vw);
   display: flex; flex-direction: column;
-  background: var(--superficie);
+  background: var(--vidrio-fuerte);
+  -webkit-backdrop-filter: var(--desenfoque);
+  backdrop-filter: var(--desenfoque);
   border-left: 1px solid var(--borde);
-  box-shadow: -12px 0 34px rgba(0, 0, 0, .18);
+  box-shadow: inset 1px 0 0 var(--brillo), -14px 0 40px rgba(16, 42, 76, .16);
 }
 .ficha-cab {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
@@ -564,7 +751,7 @@ button.nav[aria-current="true"] {
 .ayuda:hover, .ayuda:focus-visible, .ayuda[aria-expanded="true"] {
   background: var(--acento);
   border-color: var(--acento);
-  color: #fff;
+  color: var(--sobre-acento);
 }
 th .ayuda { vertical-align: baseline; }
 .campo-filtro { display: inline-flex; align-items: center; }
@@ -595,9 +782,11 @@ th .ayuda { vertical-align: baseline; }
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--borde);
-  border-radius: 10px;
-  background: var(--superficie);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+  border-radius: var(--radio);
+  background: var(--vidrio-fuerte);
+  -webkit-backdrop-filter: var(--desenfoque);
+  backdrop-filter: var(--desenfoque);
+  box-shadow: inset 0 1px 0 var(--brillo), var(--sombra);
 }
 .multi-op {
   display: flex;
@@ -917,7 +1106,11 @@ button.enlace {
   }
   .lateral .grupo { flex-direction: row; flex-wrap: wrap; }
   .lateral .grupo-tit, .lateral-pie .usuario { display: none; }
-  .lateral-pie { margin: 0 0 0 auto; }
+  /* En columna el pie va al final por el margen automático; en fila hay
+     que mandarlo al final explícitamente, o el selector de tema se cuela
+     entre dos grupos de navegación. */
+  .lateral-pie { margin: 0 0 0 auto; order: 9; flex-direction: row; align-items: center; }
+  .tema { flex: none; }
   .editor { grid-template-columns: 1fr; }
 }
 

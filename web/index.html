@@ -6,6 +6,17 @@
 <title>JUMP Math Chile · Prospección</title>
 <meta name="description" content="CRM de prospección: 7.808 establecimientos priorizados por facilidad de cierre y dolor documentado en matemática.">
 <link rel="stylesheet" href="estilos.css">
+<meta name="theme-color" content="#e7ecf4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a1017" media="(prefers-color-scheme: dark)">
+<script>
+  /* El tema se aplica antes de pintar. Puesto en app.js —que es un
+     módulo, y por tanto diferido— la página aparecería un instante en
+     claro antes de saltar a oscuro en cada carga. */
+  try {
+    var t = localStorage.getItem('jm.tema');
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* modo privado */ }
+</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📐</text></svg>">
 </head>
 <body>
@@ -60,6 +71,14 @@
     </div>
 
     <div class="lateral-pie">
+      <!-- Tres estados y no un interruptor: "Sistema" es el que la
+           mayoría quiere y el que un interruptor de dos posiciones
+           obliga a abandonar en cuanto se toca. -->
+      <div class="tema" role="group" aria-label="Tema de la interfaz">
+        <button type="button" data-tema="light" aria-pressed="false">Claro</button>
+        <button type="button" data-tema="dark" aria-pressed="false">Oscuro</button>
+        <button type="button" data-tema="auto" aria-pressed="true">Sistema</button>
+      </div>
       <div class="usuario">
         <img id="avatar" alt="">
         <span id="correo"></span>
