@@ -32,12 +32,16 @@
       var p = original.apply(this, arguments);
       if (/identitytoolkit\.googleapis\.com/.test(url)) {
         p.then(function (r) {
-          if (r.ok) return;
+          /* No sólo los HTTP de error: con returnIdpCredential, Firebase
+             devuelve algunos errores como 200 con `errorMessage` en el
+             cuerpo, y el SDK los trata igual que a un 400. */
           r.clone().text().then(function (cuerpo) {
+            var texto = String(cuerpo || '');
+            if (r.ok && texto.indexOf('errorMessage') < 0) return;
             window.__authDiag.push({
               ruta: url.replace(/^.*\/v1\//, '').replace(/\?.*$/, ''),
               estado: r.status,
-              cuerpo: String(cuerpo || '').slice(0, 800),
+              cuerpo: texto.slice(0, 1200),
               cuando: Date.now(),
             });
           }).catch(function () {});

@@ -3463,11 +3463,17 @@ function detalleDelServidor() {
   let texto = d.cuerpo;
   try {
     const j = JSON.parse(d.cuerpo);
-    texto = j?.error?.message || d.cuerpo;
+    /* Dos formas: un 4xx trae `error.message`; un 200 "blando" trae
+       `errorMessage` y, con él, la identidad que Google devolvió. El
+       correo y el federatedId son lo que permite comparar contra el
+       usuario guardado en Firebase. */
+    texto = j?.errorMessage || j?.error?.message || d.cuerpo;
     const razon = j?.error?.errors?.[0]?.reason;
     if (razon && !texto.includes(razon)) texto += ` (${razon})`;
+    const identidad = [j?.email, j?.federatedId].filter(Boolean).join(' · ');
+    if (identidad) texto += ` — Google devolvió: ${identidad}`;
   } catch { /* no era JSON */ }
-  return ` Firebase respondió ${d.estado} en ${d.ruta}: ${texto.slice(0, 300)}`;
+  return ` Firebase respondió ${d.estado} en ${d.ruta}: ${texto.slice(0, 400)}`;
 }
 
 function mensajeDeAcceso(e) {
