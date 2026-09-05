@@ -44,6 +44,32 @@ sitio donde la interfaz se permite ser vistosa.
   generado hoy. El oscuro de acá es el mismo navy bajado a carbón, para que
   los dos temas se reconozcan como la misma herramienta.
 
+### Segunda pasada: que el vidrio sea vidrio
+
+La primera versión tenía translucidez y desenfoque, y aun así el riel se
+leía como una columna tintada. Lo que faltaba no era más blur: era que se
+viera el fondo por los cuatro lados y que el borde tuviera espesor. Tres
+decisiones:
+
+- **Flota.** El riel lleva 10px de aire y esquinas de 20px; la ficha se
+  posa sobre la tabla con aire alrededor en vez de salir pegada al borde.
+  Un panel translúcido pegado a un lado es pintura; despegado, es un objeto.
+- **Canto.** `--relieve-vidrio`: filo de luz arriba y a la izquierda —de
+  donde viene la luz del lienzo—, filo de sombra abajo, y una banda clara
+  que entra desde el borde superior como la luz al cruzar la lámina. Todo
+  con sombras internas: el riel desplaza su contenido y un pseudo-elemento
+  absoluto se iría con él.
+- **Esquinas concéntricas.** Lente de 8px dentro de un riel de 20px con
+  12px de relleno. Paralelas se ven mal y nadie sabe por qué.
+
+El desenfoque bajó de 22 a 18px y subió la saturación: el vidrio tiene que
+dejar adivinar la forma de lo que pasa por debajo. Los controles del
+filtro siguen opacos: son cromo, pero están pegados a los datos.
+
+Descartado: grano/ruido (Apple no lo usa; sólo ensucia), y vidrio en los
+selectores de la barra de filtros (se pierde legibilidad justo donde se
+decide qué mirar).
+
 ### Restricciones que hay que respetar al tocar esto
 
 - La rampa ordinal de tiers está validada (monotonía, ΔL, contraste del
