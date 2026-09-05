@@ -25,6 +25,10 @@
 //   node firebase/reparar-google.mjs --admin --correo info@jumpmath.cl \
 //     --nuevo 112824584592168591971 --aplicar
 //
+// Si el correo no aparece, se puede ir directo por el identificador de
+// Firebase, que sale de `npx firebase-tools auth:export`:
+//   node firebase/reparar-google.mjs --admin --uid 7AYHO7by… --nuevo 1128…
+//
 // --nuevo acepta el identificador suelto o el texto completo del error,
 // que es de donde sale.
 // ============================================================
@@ -91,9 +95,66 @@ async function conectar() {
   return { auth: getAuth(), db: getFirestore() };
 }
 
+/* Encontrar la cuenta sin mentir sobre por qué no aparece.
+   Un `catch` que devuelve null convierte un problema de credenciales, de
+   proyecto o de red en "no existe esa cuenta", que es una pista falsa y
+   manda a buscar donde no es. Sólo "user-not-found" significa que no
+   está; y aun entonces se recorre la lista, porque `getUserByEmail` sólo
+   mira el campo `email` de la cuenta y hay usuarios cuyo correo vive en
+   el proveedor. */
+async function buscarUsuario(auth, correo, uid) {
+  if (uid) {
+    return auth.getUser(uid).catch((e) => {
+      if (e?.code === 'auth/user-not-found') {
+        throw new Error(`No hay ninguna cuenta con uid ${uid} en este proyecto.`);
+      }
+      throw e;
+    });
+  }
+  try {
+    return await auth.getUserByEmail(correo);
+  } catch (e) {
+    if (e?.code !== 'auth/user-not-found') throw e;
+  }
+
+  const buscado = correo.trim().toLowerCase();
+  const encontrados = [];
+  let pagina = await auth.listUsers(1000);
+  for (;;) {
+    for (const u of pagina.users) {
+      const suyos = [u.email, ...(u.providerData || []).map((p) => p.email)]
+        .filter(Boolean).map((c) => c.toLowerCase());
+      if (suyos.includes(buscado)) encontrados.push(u);
+    }
+    if (!pagina.pageToken) break;
+    pagina = await auth.listUsers(1000, pagina.pageToken);
+  }
+  if (encontrados.length === 1) {
+    console.log(`(${correo} no está en el campo de correo de la cuenta, `
+      + 'sino en su proveedor)\n');
+    return encontrados[0];
+  }
+  if (encontrados.length > 1) {
+    throw new Error(`Hay ${encontrados.length} cuentas con ${correo}:\n`
+      + encontrados.map((u) => `  ${u.uid}`).join('\n')
+      + '\n  Elige una con --uid <uid>.');
+  }
+  const todas = [];
+  let p2 = await auth.listUsers(1000);
+  for (;;) {
+    todas.push(...p2.users.map((u) => `  ${u.uid}  ${u.email || '(sin correo)'}`));
+    if (!p2.pageToken) break;
+    p2 = await auth.listUsers(1000, p2.pageToken);
+  }
+  throw new Error(`Ninguna cuenta con ${correo} en ${firebaseConfig.projectId}.\n`
+    + `Las que hay (${todas.length}):\n${todas.join('\n')}`);
+}
+
 async function main() {
   const correo = valor('--correo');
-  if (!correo) throw new Error('Falta --correo <la dirección con la que se entra>');
+  if (!correo && !valor('--uid')) {
+    throw new Error('Falta --correo <la dirección con la que se entra>, o --uid <el de Firebase>');
+  }
   const nuevoId = idDeGoogle(valor('--nuevo', ''));
   if (valor('--nuevo') && !nuevoId) {
     throw new Error('No encuentro un identificador de Google en --nuevo.\n'
@@ -101,13 +162,13 @@ async function main() {
   }
 
   const { auth, db } = await conectar();
-  const usuario = await auth.getUserByEmail(correo).catch(() => null);
-  if (!usuario) throw new Error(`Firebase no tiene ninguna cuenta con ${correo}.`);
+  console.log(`Proyecto: ${firebaseConfig.projectId}\n`);
+  const usuario = await buscarUsuario(auth, correo, valor('--uid'));
 
   const { accion, actual, google, motivo } = decidir(usuario, nuevoId);
   const esOperador = (await db.doc(`operadores/${usuario.uid}`).get()).exists;
 
-  console.log(`Cuenta de Firebase para ${correo}`);
+  console.log(`Cuenta de Firebase para ${correo || usuario.uid}`);
   console.log(`  uid            ${usuario.uid}`);
   console.log(`  en operadores  ${esOperador ? 'sí' : 'NO — no podrá entrar aunque se arregle esto'}`);
   console.log(`  proveedores    ${(usuario.providerData || [])
@@ -117,7 +178,7 @@ async function main() {
   if (accion === 'informar') {
     console.log('\nPara compararlo, mira el error de la app: dice qué identidad');
     console.log('devolvió Google. Si ese número no es el de arriba, es este caso.');
-    console.log(`\n  node firebase/reparar-google.mjs --admin --correo ${correo} \\`);
+    console.log(`\n  node firebase/reparar-google.mjs --admin --uid ${usuario.uid} \\`);
     console.log('    --nuevo <el número de accounts.google.com/…> --aplicar');
     return;
   }
@@ -150,7 +211,7 @@ async function main() {
     providerToLink: {
       providerId: 'google.com',
       uid: nuevoId,
-      email: correo,
+      email: correo || usuario.email,
       displayName: usuario.displayName || undefined,
       photoURL: usuario.photoURL || undefined,
     },
@@ -158,7 +219,7 @@ async function main() {
 
   const despues = await auth.getUser(usuario.uid);
   console.log('  enlazada la cuenta de Google actual\n');
-  console.log(`Listo. Ahora ${correo} es ${(despues.providerData || [])
+  console.log(`Listo. Ahora ${correo || usuario.uid} es ${(despues.providerData || [])
     .map((p) => `${p.providerId}:${p.uid}`).join(' · ')}`);
   console.log('Vuelve a entrar en la app; si sigue fallando, el error dirá otra cosa.');
 }
