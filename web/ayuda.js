@@ -323,7 +323,9 @@ export const AYUDA = {
     'Cuántos entraron en la campaña, ya descontadas las bajas, las casillas '
     + 'repetidas y los contactados hace poco.'],
   'col-c-enviados': ['Enviados',
-    'Correos efectivamente entregados a la API de Gmail.'],
+    'Cuántos correos salieron, sobre el tamaño del segmento. Son iguales '
+    + 'salvo que la tanda se cortara: por el cupo del día, por un error, o '
+    + 'porque la campaña todavía está programada y no ha salido.'],
   'col-c-respuestas': ['Respuestas',
     'Hilos con un mensaje que no es tuyo. Es la métrica que predice ventas; '
     + 'aparece al pulsar "Revisar respuestas".'],
@@ -341,13 +343,27 @@ export const AYUDA = {
     + 'modifica.'],
 
   'd-revisar': ['Revisar respuestas',
-    'Recorre los hilos enviados y marca respuestas, rebotes y bajas. Quien '
-    + 'rebota o pide la baja queda excluido de todas las campañas futuras, no '
-    + 'sólo de esta.'],
+    'Lee los hilos de esta campaña en tu buzón y marca lo que encuentra. '
+    + 'Distingue cuatro cosas: una respuesta de verdad, que manda el colegio '
+    + 'a "Hoy"; una baja pedida; un rebote definitivo —la dirección no '
+    + 'existe—, que excluye al colegio de todas las campañas futuras y no '
+    + 'sólo de ésta; y un aviso temporal —retraso, buzón lleno, respuesta '
+    + 'automática de vacaciones—, que sólo se anota en la fila y se vuelve a '
+    + 'mirar la próxima vez. Esa diferencia importa: dar de baja a un colegio '
+    + 'porque su servidor estuvo caído una tarde es perderlo por una avería '
+    + 'ajena, y de la lista de bajas no se sale.'],
   'd-seguimiento': ['Crear seguimiento',
     'Arma una campaña de recordatorio para los que no respondieron, dentro '
     + 'del hilo del primer correo y en pieza breve. Es la acción de mayor '
     + 'retorno: un segundo toque suele duplicar las respuestas totales.'],
+  'col-c-rebotes': ['Rebotes y bajas',
+    'Cuántos destinatarios de esta campaña quedaron descartados para '
+    + 'siempre: la dirección no existe, o alguien pidió no recibir más. '
+    + 'Sale de "Revisar respuestas en Gmail", que lee los avisos de entrega '
+    + 'del buzón. Un aviso de retraso o un buzón lleno no cuentan acá: son '
+    + 'temporales, se anotan en la fila del colegio y se vuelven a mirar en '
+    + 'la próxima pasada. Sobre 3% de la tanda, el problema es la lista y '
+    + 'conviene depurarla antes de seguir enviando.'],
   'd-reenviar': ['Reenviar a las direcciones nuevas',
     'Compara la dirección que usó esta campaña con la que cada colegio tiene '
     + 'hoy, y arma una campaña nueva con el mismo mensaje para los que '

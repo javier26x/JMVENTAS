@@ -1096,7 +1096,18 @@ button.enlace {
   border: 1px solid var(--linea); background: var(--tarjeta); cursor: pointer;
 }
 .atajos-cuando .atajo:hover { border-color: var(--acento); color: var(--acento); }
-.sub.malo { color: var(--critico); }
+/* El nombre de la campaña es lo que se busca en esta tabla, y los nombres
+   son largos: sin un mínimo queda partido en cuatro líneas. */
+#cuerpo-campanas td:first-child,
+#vista-campanas thead th:first-child { min-width: 210px; }
+/* "48 de 48": el total va pegado y en gris, no en una columna aparte.
+   Eran dos columnas que dicen lo mismo salvo cuando una tanda se corta. */
+#cuerpo-campanas .num .sub { display: inline; font-size: 12px; }
+
+/* Un número que duele. Se usa suelto en la columna de rebotes y sobre
+   .sub y .env en otras; la regla base cubre los tres. */
+.malo { color: var(--critico); font-weight: 550; }
+.sub.malo { font-weight: 400; }
 
 /* Los errores de acceso pueden traer un comando que hay que copiar y la
    respuesta cruda del servidor. Sin conservar los saltos de línea todo

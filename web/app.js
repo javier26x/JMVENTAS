@@ -1856,10 +1856,11 @@ async function pintarCampanas() {
         c.estado === 'programada' && c.programadaPara
           ? `<div class="sub">${esc(cuandoSale(c.programadaPara))}</div>` : ''}${
         c.errorProgramado ? `<div class="sub malo">${esc(c.errorProgramado)}</div>` : ''}</td>
-      <td class="num">${numero(t.destinatarios)}</td>
-      <td class="num">${numero(t.enviados)}</td>
+      <td class="num">${numero(t.enviados)}<span class="sub"> de ${numero(t.destinatarios)}</span></td>
       <td class="num">${numero(t.respuestas)}</td>
       <td class="num">${c.track ? numero(t.aperturas) : '—'}</td>
+      <td class="num">${(t.rebotes || 0) + (t.bajas || 0)
+    ? `<span class="malo">${numero((t.rebotes || 0) + (t.bajas || 0))}</span>` : '—'}</td>
       <td>${fecha(c.creado)}</td>
       <td class="acciones-fila">
         <button data-abrir="${esc(c.id)}">Ver</button>
@@ -2103,7 +2104,7 @@ function pintarDestinatarios() {
     <td><span class="env ${esc(d.estado)}">${esc(d.estado)}</span></td>
     <td>${fecha(d.enviadoEn)}</td>
     <td class="num">${numero(d.aperturas)}</td>
-    <td class="sub">${esc(d.error || '')}</td></tr>`).join('');
+    <td class="sub">${esc(d.error || d.aviso || '')}</td></tr>`).join('');
   $('vacio-detalle')?.remove();
   if (!filas.length) {
     $('cuerpo-destinatarios').innerHTML = `<tr id="vacio-detalle"><td colspan="6" class="sub"
@@ -3376,11 +3377,18 @@ $('d-revisar').addEventListener('click', async () => {
     if (r.bajas || r.rebotes) estado.bajas = await mail.cargarBajas(db).catch(() => estado.bajas);
     await abrirDetalle(estado.campanaActual.id);
     contarHoy();
-    if (!r.revisados) mostrarError({ message: 'No hay envíos que revisar todavía.' });
-    else if (r.respuestas) {
-      avisar(`${r.respuestas} respondieron. Están esperando en “Hoy”.`);
-    } else {
-      avisar('Sin respuestas nuevas por ahora.');
+    /* Antes decía "sin respuestas nuevas" aunque hubiera encontrado seis
+       rebotes: lo que se fue a buscar también hay que contarlo. */
+    if (!r.revisados) { mostrarError({ message: 'No hay envíos que revisar todavía.' }); } else {
+      const partes = [
+        r.respuestas ? `${r.respuestas} respondieron` : '',
+        r.rebotes ? `${r.rebotes} rebotaron` : '',
+        r.bajas ? `${r.bajas} pidieron la baja` : '',
+        r.demoras ? `${r.demoras} con aviso de demora o autorespuesta` : '',
+      ].filter(Boolean);
+      avisar(partes.length
+        ? `${partes.join(' · ')}.${r.respuestas ? ' Están esperando en “Hoy”.' : ''}`
+        : `Sin novedades en ${numero(r.revisados)} envíos revisados.`);
     }
   } catch (e) { mostrarError(e); } finally { $('d-revisar').disabled = false; }
 });

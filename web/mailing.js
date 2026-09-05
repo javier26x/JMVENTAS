@@ -1106,6 +1106,96 @@ const PIDE_BAJA = [
   /^\s*baja\s*$/i,   // la palabra sola: es exactamente lo que pide el pie
 ];
 
+/* Quién manda los avisos de entrega. Se mira sólo la parte de antes de
+   la arroba, no el encabezado entero: un colegio llamado "San Postmaster"
+   o un director apellidado Daemon no mandan rebotes, y darlo por hecho
+   saca al colegio de todas las campañas para siempre.
+   Que sea automático tampoco decide nada por sí solo: el mismo
+   mailer-daemon avisa de un fallo definitivo y de un retraso temporal,
+   que son cosas opuestas. */
+const BUZONES_AUTOMATICOS = /^(mailer-?daemon|postmaster|no-?reply|noreply|bounces?|delivery)\b/i;
+
+/** La parte de antes de la arroba de un encabezado From. */
+export function buzonDe(cabecera) {
+  const dentro = String(cabecera || '').match(/<([^>]+)>/)?.[1]
+    || String(cabecera || '').trim();
+  return (dentro.split('@')[0] || '').trim().replace(/^"|"$/g, '');
+}
+
+/* Un rebote duro: la dirección no existe o el dominio no recibe. Ahí no
+   hay nada que esperar y el colegio sale de la lista para siempre. */
+const REBOTE_DURO = [
+  /\b5\.[01]\.[0-9]\b/,                    // 5.1.1 usuario, 5.0.x general
+  /\b550\b|\b551\b|\b553\b|\b554\b/,
+  /address not found|user unknown|no such (user|address|mailbox)/i,
+  /recipient (address )?rejected|does ?n.t exist|no existe/i,
+  /dirección no (existe|encontrada)|destinatario desconocido/i,
+  /domain (not found|does ?n.t exist)|dominio no existe/i,
+];
+
+/* Un rebote blando: el buzón está lleno, el servidor no contesta, el
+   mensaje va con retraso. Se anota para que se vea, y no se toca nada
+   más: dar de baja a un colegio porque su servidor estaba caído una
+   tarde es perder un prospecto por una avería ajena, y de la lista de
+   bajas no se sale. */
+const REBOTE_BLANDO = [
+  /\b4\.[0-9]\.[0-9]\b/,
+  /\b421\b|\b450\b|\b451\b|\b452\b/,
+  /delay|retras|temporar|try again|quota|mailbox (is )?full|over quota/i,
+  /buz[óo]n (lleno|excedido)|cuota excedida/i,
+];
+
+/* Una respuesta automática no es una respuesta. Marcarla como tal manda
+   al colegio a "Respondieron y esperan", donde alguien pierde el tiempo
+   abriendo un correo que dice que están de vacaciones. */
+const AUTORESPUESTA = [
+  /out of (the )?office|automatic reply|auto-?reply|autorespuesta/i,
+  /fuera de la oficina|respuesta autom[áa]tica|ausencia|vacaciones/i,
+  /acuse de recibo|hemos recibido su (correo|mensaje)/i,
+];
+
+const alguno = (lista, texto) => lista.some((r) => r.test(texto));
+
+/**
+ * Qué es un mensaje entrante: rebote duro, rebote blando, baja pedida,
+ * respuesta automática o una respuesta de verdad.
+ *
+ * Se decide con el remitente, el asunto y el resumen, que es lo que
+ * viene con la metadata y no exige leer el cuerpo del correo.
+ */
+export function clasificarEntrante({ de = '', asunto = '', resumen = '' } = {}) {
+  const texto = `${asunto} ${resumen}`;
+  const automatico = BUZONES_AUTOMATICOS.test(buzonDe(de));
+  if (automatico || /delivery status notification|undeliver|returned mail|mail delivery/i.test(asunto)) {
+    // El orden importa: "550 mailbox full" existe, y manda el 5xx.
+    if (alguno(REBOTE_DURO, texto)) return { tipo: 'rebote', motivo: motivoDe(texto) };
+    if (alguno(REBOTE_BLANDO, texto)) return { tipo: 'demora', motivo: motivoDe(texto) };
+    // Automático y no se sabe qué: no se inventa una baja definitiva.
+    return { tipo: 'demora', motivo: recorte(asunto) || 'aviso de entrega sin detalle' };
+  }
+  if (alguno(PIDE_BAJA, asunto) || alguno(PIDE_BAJA, resumen)) {
+    return { tipo: 'baja', motivo: 'pidió la baja' };
+  }
+  if (alguno(AUTORESPUESTA, texto)) return { tipo: 'auto', motivo: recorte(asunto) };
+  return { tipo: 'respuesta', motivo: '' };
+}
+
+const recorte = (s) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+
+/* La frase del servidor que explica el rebote, para que se vea en la
+   fila en vez de un "rebotado" a secas: una dirección que no existe se
+   corrige buscando otra; un buzón lleno se reintenta. */
+function motivoDe(texto) {
+  const codigo = texto.match(/\b[45]\.[0-9]\.[0-9]{1,2}\b/)?.[0]
+    || texto.match(/\b[45][0-9]{2}\b/)?.[0] || '';
+  // La frase que explica, no la que repite el código.
+  const frase = [...REBOTE_DURO, ...REBOTE_BLANDO]
+    .map((r) => texto.match(r)?.[0])
+    .find((m) => m && !/^[45][.0-9]*$/.test(m.trim())) || '';
+  const partes = [...new Set([codigo, frase].filter(Boolean))];
+  return recorte(partes.join(' · ')) || recorte(texto);
+}
+
 export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
   /* Los ya resueltos quedan fuera: un rebote o una baja que se vuelve a
      mirar se volvería a contar, y cada pasada inflaría los totales de la
@@ -1116,6 +1206,7 @@ export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
   let respuestas = 0;
   let rebotes = 0;
   let bajas = 0;
+  let demoras = 0;
   const yo = (gmailCorreo() || '').toLowerCase();
 
   for (const [i, d] of dest.entries()) {
@@ -1129,17 +1220,41 @@ export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
         return !from.toLowerCase().includes(yo);
       });
       if (entrantes.length) {
-        const from = (entrantes[0].payload?.headers || [])
-          .find((h) => h.name.toLowerCase() === 'from')?.value || '';
-        const rebote = /mailer-daemon|postmaster|delivery.?(status|subsystem)/i.test(from);
-        /* El resumen del mensaje viene con la metadata, sin necesidad del
-           permiso de lectura completa: alcanza para reconocer una baja
-           pedida por respuesta y honrarla sin trabajo manual. */
-        const pidioBaja = entrantes.some((m) => PIDE_BAJA
-          .some((r) => r.test(String(m.snippet || ''))));
+        /* El resumen y el asunto vienen con la metadata, sin necesidad de
+           leer el cuerpo: alcanza para distinguir un rebote definitivo de
+           uno temporal, y una baja pedida a mano de una autorespuesta. */
+        const leidos = entrantes.map((m) => {
+          const cab = (n) => (m.payload?.headers || [])
+            .find((h) => h.name.toLowerCase() === n)?.value || '';
+          return clasificarEntrante({
+            de: cab('from'), asunto: cab('subject'), resumen: String(m.snippet || ''),
+          });
+        });
+        /* Gana el más grave de todo el hilo, no el primero que llegó: un
+           retraso seguido de un fallo definitivo es un fallo, y una baja
+           pedida después de un "gracias" sigue siendo una baja. */
+        const orden = ['rebote', 'baja', 'respuesta', 'demora', 'auto'];
+        const veredicto = leidos.sort(
+          (a, b) => orden.indexOf(a.tipo) - orden.indexOf(b.tipo))[0];
+
+        /* Una demora o una autorespuesta no resuelven nada: se anota el
+           motivo para que se vea en la fila y el destinatario queda como
+           está, para volver a mirarlo en la próxima pasada. Dar de baja a
+           un colegio porque su servidor estaba caído sería perderlo por
+           una avería ajena, y de la lista de bajas no se sale. */
+        if (veredicto.tipo === 'demora' || veredicto.tipo === 'auto') {
+          await marcar(db, campanaId, d.rbd, { aviso: veredicto.motivo });
+          demoras += 1;
+          alAvanzar?.({ i: i + 1, total: dest.length });
+          continue;
+        }
+
+        const rebote = veredicto.tipo === 'rebote';
+        const pidioBaja = veredicto.tipo === 'baja';
         await marcar(db, campanaId, d.rbd, {
           estado: rebote ? 'rebotado' : pidioBaja ? 'baja' : 'respondido',
           respondidoEn: serverTimestamp(),
+          ...(veredicto.motivo ? { aviso: veredicto.motivo } : {}),
         });
         /* Un rebote duro y una baja valen lo mismo para la lista: no se
            les vuelve a escribir nunca, ni en la campaña siguiente. */
@@ -1176,7 +1291,7 @@ export async function revisarRespuestas(db, campanaId, alAvanzar, uid) {
       actualizado: serverTimestamp(),
     });
   }
-  return { respuestas, rebotes, bajas, revisados: dest.length };
+  return { respuestas, rebotes, bajas, demoras, revisados: dest.length };
 }
 
 /* Mueve el prospecto y deja la huella en la bitácora. Los dos van
