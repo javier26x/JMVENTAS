@@ -13,7 +13,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, FieldPath } = require('firebase-admin/firestore');
 
 initializeApp();
 const db = getFirestore();
@@ -217,7 +217,13 @@ const PAGINA_WHATSAPP = (app, web) => `<!doctype html><html lang="es"><head>
 // ============================================================
 const OAUTH = 'https://oauth2.googleapis.com/token';
 const ENVIAR = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
-const LIMITE_DIARIO = 450;
+/* Copia de web/mailing.js: los dos números tienen que ser el mismo, o
+   el navegador prometería una cosa y el reloj haría otra. El tope no lo
+   pone la cuota de Google (Workspace da 2.000 al día) sino la
+   reputación: con el umbral de queja de spam en 0,3%, cien correos
+   diarios es lo que aguanta un buzón haciendo prospección en frío. */
+const LIMITE_DIARIO = 100;
+const ESCALONES = [25, 50, LIMITE_DIARIO];
 const PAUSA_MS = 1400;
 
 /* El día se cuenta en Santiago y no en UTC: a las 21:00 de un martes
@@ -343,12 +349,32 @@ async function despachar(token, crudo, hilo) {
 }
 
 /* Cupo que queda hoy. El calentamiento no se suspende porque el envío
-   sea automático: una cuenta que despacha 450 correos de golpe termina
-   suspendida igual, y con ella se va la base entera. */
+   sea automático: una cuenta que despacha el tope de golpe el primer día
+   termina suspendida igual, y con ella se va la base entera.
+   Eso decía el comentario y no lo hacía el código: aplicaba el tope
+   plano en vez de la rampa. El navegador recorta cada tanda al escalón
+   cuando se programa, así que una campaña sola nunca se pasaba; lo que
+   se colaba era la suma. Dos campañas programadas el mismo día se
+   recortan por separado —ninguna sabe de la otra, porque el contador
+   sólo cuenta lo ya enviado— y el reloj las despachaba las dos, hasta
+   el tope plano. Igual una tanda a mano por la mañana y una programada
+   por la tarde. Ahora los dos miden contra la misma regla que
+   tandaRecomendada() en web/mailing.js: la mayor tanda anterior manda,
+   y hoy se puede duplicar, nunca más. */
 async function cupoDeHoy() {
   const dia = diaSantiago();
-  const s = await db.doc(`envios/${dia}`).get();
-  return { dia, resto: Math.max(0, LIMITE_DIARIO - (Number(s.get('n')) || 0)) };
+  const s = await db.collection('envios')
+    .orderBy(FieldPath.documentId(), 'desc').limit(21).get();
+  const historial = s.docs.map((d) => ({ dia: d.id, n: Number(d.get('n')) || 0 }));
+  const enviadosHoy = historial.find((h) => h.dia === dia)?.n || 0;
+  const anteriores = historial.filter((h) => h.dia !== dia && h.n > 0);
+  const maximo = anteriores.reduce((a, h) => Math.max(a, h.n), 0);
+  /* Sin días previos se arranca por el primer escalón: una cuenta que
+     no ha enviado nunca no sale con cien correos. */
+  const tope = anteriores.length
+    ? (ESCALONES.find((e) => e > maximo) || LIMITE_DIARIO)
+    : ESCALONES[0];
+  return { dia, resto: Math.max(0, tope - enviadosHoy) };
 }
 
 /* Marca el prospecto igual que el envío manual: sin esto, un colegio al

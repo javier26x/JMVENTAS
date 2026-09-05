@@ -273,7 +273,10 @@ export const AYUDA = {
   'c-tanda': ['Correos en esta tanda',
     'Cuántos se envían ahora. Se propone el tope del escalón de calentamiento '
     + 'y lo que queda del cupo de hoy; el resto del segmento espera a la '
-    + 'próxima tanda.'],
+    + 'próxima tanda. El techo son 100 al día, y no lo pone Google —la '
+    + 'cuenta admite 2.000— sino la reputación: basta que dos personas '
+    + 'marquen el correo como spam para cruzar el umbral que Google vigila. '
+    + 'Las campañas programadas gastan de este mismo cupo.'],
   'c-asunto-b': ['Prueba A/B del mensaje',
     'Si completas el mensaje B, la mitad del segmento lo recibe (uno sí, uno '
     + 'no) y el detalle compara ambos. El asunto no se prueba acá: ya rota '

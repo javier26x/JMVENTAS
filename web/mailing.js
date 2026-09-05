@@ -23,9 +23,17 @@ const GMAIL_ENVIAR = 'https://www.googleapis.com/auth/gmail.send';
 const GMAIL_LEER = 'https://www.googleapis.com/auth/gmail.readonly';
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-// Gmail corta a 500 destinatarios diarios; Workspace a 2.000. Se envía
-// con pausa para no gatillar el límite por minuto ni parecer spam.
-export const LIMITE_DIARIO = 450;
+/* El tope no lo pone la cuota de Google. jumpmath.cl está en Workspace,
+   donde caben 2.000 mensajes al día: pasarse de ahí da un bloqueo de
+   envío de 24 horas y se acabó. Lo que no se recupera en 24 horas es la
+   reputación, y esa se mide en quejas de spam: el umbral de Google es
+   0,3%, o sea que a 450 correos diarios bastan dos directores apretando
+   "spam" para cruzarlo. En frío, desde un solo buzón, el ritmo que se
+   sostiene son 40-60 al día; 100 es el techo con el que todavía se puede
+   dormir tranquilo. El límite de verdad es este, no el de Google.
+   Ojo: este número está también en functions/index.js, que es el que
+   manda en las campañas programadas. Los dos o ninguno. */
+export const LIMITE_DIARIO = 100;
 const PAUSA_MS = 1400;
 
 /* MINEDUC publica los nombres en mayúsculas. Escribir "Estimado equipo
@@ -1012,15 +1020,16 @@ async function marcar(db, campanaId, rbd, datos) {
 }
 
 // ---------- calentamiento de la cuenta ----------
-/* Una cuenta que nunca envió correo frío y arranca con 450 mensajes el
-   primer día termina en spam o suspendida, y con ella se quema la base
-   entera. El contador por día es lo que permite subir por escalones y
-   saber cuánto queda de cupo hoy, aunque se envíe desde otro equipo. */
+/* Una cuenta que nunca envió correo frío y arranca a tope el primer día
+   termina en spam o suspendida, y con ella se quema la base entera. El
+   contador por día es lo que permite subir por escalones y saber cuánto
+   queda de cupo hoy, aunque se envíe desde otro equipo —o desde el
+   reloj del servidor, que lee y escribe este mismo contador. */
 /* El día se cuenta en Chile, no en la hora del equipo. El servidor usa
    America/Santiago para el mismo contador, y con un portátil en otro huso
    —o en UTC— los dos escribían documentos distintos: los envíos de la
    tarde caían en el día siguiente mientras el reloj creía que el cupo
-   seguía entero, que es justo como se queman 450 correos en una tarde. */
+   seguía entero, que es justo como se quema el cupo entero en una tarde. */
 export function diaHoy(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -1042,9 +1051,9 @@ export async function historialEnvios(db, dias = 21) {
 }
 
 /* Escalones de calentamiento: cada tanda nueva puede duplicar la mayor
-   anterior, nunca más. Partir en 25 y llegar al tope en dos semanas es
-   el ritmo que Gmail tolera sin castigar la reputación. */
-const ESCALONES = [25, 50, 100, 200, 300, LIMITE_DIARIO];
+   anterior, nunca más. Tres días para llegar al tope, y el tope es bajo
+   a propósito. */
+export const ESCALONES = [25, 50, LIMITE_DIARIO];
 
 export function tandaRecomendada(historial) {
   const hoy = diaHoy();

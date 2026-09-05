@@ -1596,8 +1596,8 @@ function resumenSegmento() {
 
 /* ---------- calentamiento ----------
    El ritmo importa tanto como el mensaje: una cuenta nueva que dispara
-   450 correos el primer día no llega a bandeja de entrada, llega a
-   spam, y de ahí no vuelve. */
+   cientos de correos el primer día no llega a bandeja de entrada, llega
+   a spam, y de ahí no vuelve. */
 async function pintarTanda() {
   const nota = $('tanda-nota');
   let plan;
@@ -3057,7 +3057,7 @@ async function programar() {
 
   await pintarTanda();
   /* El campo puede venir en 0 cuando el cupo de hoy está agotado, y
-     `Number("0") || 450` daba 450: se ofrecía programar la tanda máxima
+     `Number("0") || LIMITE_DIARIO` daba el tope: se ofrecía la tanda máxima
      justo bajo el aviso rojo que decía que no quedaba cupo. El tope es
      el escalón del calentamiento, no el límite duro. */
   const escrito = Number($('c-tanda').value);
