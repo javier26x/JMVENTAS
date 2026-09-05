@@ -108,13 +108,19 @@ function token() {
   }
 }
 
+/* Con las credenciales de una persona —las que deja `gcloud auth
+   login`— Google no sabe a qué proyecto cobrarle la llamada y rechaza
+   con 403 aunque los permisos estén bien. Esta cabecera lo dice. */
+const cabeceras = (tk, conCuerpo) => ({
+  Authorization: `Bearer ${tk}`,
+  'x-goog-user-project': PROYECTO,
+  ...(conCuerpo ? { 'Content-Type': 'application/json' } : {}),
+});
+
 async function llamar(url, cuerpo, tk) {
   const r = await fetch(url, {
     method: cuerpo ? 'POST' : 'GET',
-    headers: {
-      Authorization: `Bearer ${tk}`,
-      ...(cuerpo ? { 'Content-Type': 'application/json' } : {}),
-    },
+    headers: cabeceras(tk, Boolean(cuerpo)),
     ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
   });
   const texto = await r.text();
@@ -123,9 +129,17 @@ async function llamar(url, cuerpo, tk) {
   if (!r.ok) {
     const msg = j?.error?.message || texto.slice(0, 300) || `HTTP ${r.status}`;
     if (r.status === 403) {
-      throw new Error(`Sin permiso sobre ${PROYECTO}: ${msg}\n`
-        + '  La cuenta de gcloud tiene que ser dueña o editora del proyecto.\n'
-        + '  Comprueba con:  gcloud auth list');
+      /* Dos cosas muy distintas dan 403, y confundirlas manda a revisar
+         permisos que están bien. */
+      const cuota = /quota project|serviceusage/i.test(msg);
+      throw new Error(`${cuota ? 'Falta habilitar el proyecto de cuota' : 'Sin permiso'} `
+        + `sobre ${PROYECTO}: ${msg}\n`
+        + (cuota
+          ? '  Prueba:  gcloud auth application-default set-quota-project '
+            + `${PROYECTO}\n  y si no, habilita la API:  gcloud services enable `
+            + `identitytoolkit.googleapis.com --project ${PROYECTO}`
+          : '  La cuenta de gcloud tiene que ser dueña o editora del proyecto.\n'
+            + '  Comprueba con:  gcloud auth list'));
     }
     throw new Error(`${msg} (HTTP ${r.status})`);
   }
@@ -187,7 +201,7 @@ async function main() {
   const { accion, actual, google, motivo } = decidir(usuario, nuevoId);
 
   const enOperadores = await fetch(`${FS}/operadores/${usuario.uid}`,
-    { headers: { Authorization: `Bearer ${tk}` } }).then((r) => r.ok).catch(() => null);
+    { headers: cabeceras(tk, false) }).then((r) => r.ok).catch(() => null);
 
   console.log(`Cuenta de Firebase para ${usuario.email || usuario.uid}`);
   console.log(`  uid            ${usuario.uid}`);
