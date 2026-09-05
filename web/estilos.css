@@ -683,6 +683,27 @@ button.nav[aria-current="true"]::before {
   padding: 9px 10px;
 }
 .hoy-fila:hover { background: color-mix(in srgb, var(--acento) 8%, transparent); }
+
+/* La lista de llamadas del día: nombre a la izquierda, teléfono y los
+   tres resultados a la derecha. Se trabaja de arriba abajo sin abrir
+   nada, que es lo único que hace que ocho llamadas se hagan de verdad. */
+.hoy-llamada { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hoy-llamada .hoy-fila { flex: 1 1 240px; }
+.hoy-acciones {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 0 12px 10px;
+}
+.hoy-acciones .tel {
+  font-size: 13.5px; font-weight: 550; text-decoration: none; white-space: nowrap;
+}
+.hoy-acciones .tel:hover { text-decoration: underline; }
+.tras-llamar { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Objetivo táctil de 44px: esto se usa con el teléfono en la otra mano. */
+.tras-llamar button { font-size: 12.5px; padding: 7px 11px; min-height: 44px; }
+@media (min-width: 700px) {
+  .hoy-acciones { padding: 0 12px 10px 0; }
+  .tras-llamar button { min-height: 34px; padding: 6px 10px; }
+}
 .hoy-fila .nombre { display: block; font-size: 13.5px; font-weight: 550; }
 .hoy-fila .sub { display: block; margin: 0; font-size: 12px; color: var(--tinta-apagada); }
 

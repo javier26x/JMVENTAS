@@ -65,6 +65,12 @@ const ETIQUETA_ESTADO = {
 const LISTADOS = ['oportunidades', 'prospectos', 'cuentas', 'redes'];
 const PAGINADAS = ['oportunidades', 'prospectos'];
 
+/* Cuántos días hábiles espera un colegio que no contestó antes de volver
+   a la lista de llamadas. Lo lee el aviso del botón y lo escribe la
+   anotación: si fueran dos números, el botón prometería una cosa y el
+   próximo paso quedaría en otra. */
+const DIAS_REINTENTO = 2;
+
 const TITULOS = {
   hoy: ['Hoy', 'Lo que hay que atender ahora: quién respondió, qué se prometió y a quién llamar.'],
   panel: ['Panel', 'Cifras de toda la base, contadas en el servidor — no de la página cargada.'],
@@ -1050,6 +1056,40 @@ function pintarHoy() {
   $('n-hoy').textContent = total ? numero(total) : '';
   $('n-hoy').classList.toggle('urgente', total > 0);
 
+  /* La lista de llamadas del día tiene que poder trabajarse sin salir de
+     acá. Antes había que abrir la ficha, bajar al historial, elegir el
+     tipo, escribir y guardar: cinco pasos por llamada, y una lista de
+     ocho llamadas no se hace así. El teléfono marca con un toque y el
+     resultado se anota con otro. */
+  /* El directorio trae la centralita y el anexo en el mismo campo, con
+     cualquier separador: "22987 4120 / 22987 4121", "…, anexo 3". Si no se
+     corta, el enlace marca los dos números pegados y no llama a nadie. */
+  const llamar = (p) => {
+    const tel = String(p.telefono || '').split(/[;/,]/)[0].trim();
+    if (!tel) {
+      return '<span class="sin-contacto">Sin teléfono</span>';
+    }
+    return `<a class="tel" href="tel:${esc(tel.replace(/[^+\d]/g, ''))}">☎ ${esc(tel)}</a>`;
+  };
+  const acciones = (p) => `<span class="tras-llamar">
+      <button data-llamada="reunion" data-rbd="${esc(p.id)}"
+        title="Quedó una reunión: sale de la lista y pasa a Reunión agendada">Reunión</button>
+      <button data-llamada="reintentar" data-rbd="${esc(p.id)}"
+        title="No contestó o pidió que llamaras después: vuelve en ${DIAS_REINTENTO} días hábiles">No contestó</button>
+      <button data-llamada="descartar" data-rbd="${esc(p.id)}" class="peligro"
+        title="No le interesa: no vuelve a aparecer">Descartar</button>
+    </span>`;
+
+  const fichaLlamada = (p, extra) => `<li>
+      <div class="hoy-llamada">
+        <button class="hoy-fila" data-ficha="${esc(p.id)}">
+          <span class="nombre">${esc(p.establecimiento || p.id)}</span>
+          <span class="sub">${esc([p.comuna, tipoColegio(p)].filter(Boolean).join(' · '))}${
+  extra ? ` · ${extra}` : ''}</span>
+        </button>
+        <div class="hoy-acciones">${llamar(p)}${acciones(p)}</div>
+      </div></li>`;
+
   const ficha = (p, extra) => `<li>
       <button class="hoy-fila" data-ficha="${esc(p.id)}">
         <span class="nombre">${esc(p.establecimiento || p.id)}</span>
@@ -1075,7 +1115,7 @@ function pintarHoy() {
     {
       t: 'Abrieron y no contestaron', c: '', a: 'hoy-calientes',
       d: 'Dos aperturas o más sin respuesta: interesa, pero no se atrevió a escribir. Es la lista de llamadas del día.',
-      items: (h.calientes || []).map((p) => ficha(p, `${numero(p.aperturasCorreo)} aperturas`)),
+      items: (h.calientes || []).map((p) => fichaLlamada(p, `${numero(p.aperturasCorreo)} aperturas`)),
       vacio: 'Todavía no hay aperturas repetidas. Requiere campañas con seguimiento activado.',
     },
     {
@@ -3685,7 +3725,69 @@ $('ficha-contacto').addEventListener('click', (e) => {
   abrirEditorDesdeSegmento();
 });
 
+/* Qué deja cada resultado de llamada. Los tres escriben en el historial:
+   una llamada que no queda anotada es una llamada que se repite. */
+const TRAS_LLAMAR = {
+  reunion: {
+    texto: 'Llamada: quedó reunión',
+    campos: () => ({ estadoCrm: 'reunion' }),
+    aviso: (n) => `${n} pasa a reunión agendada.`,
+  },
+  reintentar: {
+    texto: 'Llamada: no contestó',
+    campos: (dias) => ({
+      proximoPaso: 'Volver a llamar',
+      proximoPasoEn: enDiasHabiles(dias),
+    }),
+    aviso: (n, cuando) => `${n}: vuelve a la lista el ${cuandoPaso(cuando)}.`,
+  },
+  descartar: {
+    texto: 'Llamada: no le interesa',
+    campos: () => ({ estadoCrm: 'descartado', motivoCierre: 'No le interesa (por teléfono)' }),
+    aviso: (n) => `${n} queda descartado.`,
+  },
+};
+
+/* La fecha del próximo intento, saltándose fin de semana: llamar a un
+   colegio un sábado es no llamar. */
+function enDiasHabiles(dias) {
+  const d = new Date();
+  for (let i = 0; i < dias; i += 1) {
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  }
+  const dos = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+}
+
+async function anotarLlamada(rbd, cual, boton) {
+  const accion = TRAS_LLAMAR[cual];
+  if (!accion) return;
+  const p = (estado.hoy?.calientes || []).find((x) => x.id === rbd);
+  const nombre = mail.titulo(p?.establecimiento || `RBD ${rbd}`);
+  const fila = boton.closest('li');
+  for (const b of fila.querySelectorAll('button')) b.disabled = true;
+  try {
+    const campos = accion.campos(DIAS_REINTENTO);
+    await setDoc(doc(db, 'prospectos', String(rbd)),
+      { ...campos, actualizado: serverTimestamp() }, { merge: true });
+    await anotar(rbd, 'llamada', accion.texto);
+    /* Sale de la lista en el acto. Que siga ahí después de trabajarla es
+       la forma más rápida de llamar dos veces al mismo colegio. */
+    estado.hoy.calientes = (estado.hoy.calientes || []).filter((x) => x.id !== rbd);
+    pintarHoy();
+    avisar(accion.aviso(nombre, campos.proximoPasoEn));
+    contarHoy();
+    limpiarError();
+  } catch (err) {
+    for (const b of fila.querySelectorAll('button')) b.disabled = false;
+    mostrarError(err);
+  }
+}
+
 $('pilas-hoy').addEventListener('click', (e) => {
+  const ll = e.target.closest('button[data-llamada]');
+  if (ll) { anotarLlamada(ll.dataset.rbd, ll.dataset.llamada, ll); return; }
   const f = e.target.closest('button[data-ficha]');
   if (f) { abrirFicha(f.dataset.ficha); return; }
   const c = e.target.closest('button[data-campana]');

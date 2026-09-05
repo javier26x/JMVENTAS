@@ -183,9 +183,14 @@ export const AYUDA = {
     'Lo que quedó comprometido en la ficha de cada colegio y ya vence. Si '
     + 'está vacío no es que no haya trabajo: es que no se anotó.'],
   'hoy-calientes': ['Abrieron y no contestaron',
-    'Dos aperturas o más sin responder: el correo les interesó pero no se '
-    + 'atrevieron a escribir. Una llamada acá convierte más barato que '
-    + 'cualquier envío nuevo. Requiere campañas con seguimiento activado.'],
+    'Dos aperturas o más sin respuesta: el correo les interesó y no se '
+    + 'atrevieron a escribir. Es la lista de llamadas del día, y la '
+    + 'conversión más barata de toda la operación. Se trabaja desde acá '
+    + 'mismo: el teléfono marca con un toque y el resultado se anota con '
+    + 'otro. "Reunión" lo pasa a reunión agendada; "No contestó" lo devuelve '
+    + 'a la lista en dos días hábiles; "Descartar" lo saca. Los tres quedan '
+    + 'escritos en el historial del colegio, porque una llamada sin anotar '
+    + 'es una llamada que se repite.'],
   'hoy-seguimientos': ['Campañas que tocan seguimiento',
     'Enviadas hace más de tres días y con gente que no ha contestado. Abre '
     + 'la campaña y pulsa "Crear seguimiento".'],
