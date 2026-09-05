@@ -1601,16 +1601,33 @@ function resumenSegmento() {
 async function pintarTanda() {
   const nota = $('tanda-nota');
   let plan;
+  let aCiegas = false;
   try {
     plan = mail.tandaRecomendada(await mail.historialEnvios(db));
   } catch {
-    nota.textContent = 'No se pudo leer el historial de envíos; se usará el máximo diario.';
-    return;
+    /* Sin historial no se sabe en qué escalón va la cuenta, y de las dos
+       suposiciones posibles sólo una se paga cara: dar por bueno el tope
+       cuando en realidad era el primer día manda cuatro veces los
+       correos que la cuenta aguanta, y eso no se deshace. Suponer el
+       escalón más bajo, como mucho, cuesta una tanda. Antes se usaba el
+       máximo diario —lo decía el propio aviso— y encima se salía antes
+       de proponer nada, así que el campo se quedaba con lo de la
+       campaña anterior. */
+    plan = mail.tandaRecomendada([]);
+    aCiegas = true;
   }
   estado.plan = plan;
   const campo = $('c-tanda');
   // Sólo se propone: si alguien ya escribió un número a mano, se respeta.
   if (!campo.dataset.tocado) campo.value = Math.min(plan.resto, estado.destinatarios.length) || plan.resto;
+
+  if (aCiegas) {
+    nota.classList.add('error-texto');
+    nota.innerHTML = `<b>No se pudo leer el historial de envíos.</b> Se propone la
+      tanda más chica (${numero(plan.tope)}) hasta poder comprobar por dónde va el
+      calentamiento. Recarga la página para reintentarlo.`;
+    return;
+  }
 
   nota.innerHTML = plan.diasActivos === 0
     ? `<b>Primera tanda.</b> Parte con ${plan.tope} correos: una cuenta sin
