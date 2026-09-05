@@ -3477,14 +3477,30 @@ function detalleDelServidor() {
 }
 
 function mensajeDeAcceso(e) {
-  const base = textoDeAcceso(e);
-  /* Este código no lo produce el navegador: viene del servidor, o de la
-     ventana de Google. Cuál de los dos, y con qué texto, es justo lo que
-     hace falta saber para arreglarlo, así que va en el mensaje. */
-  if (e.code !== 'auth/provider-already-linked') return base;
-  const detalle = detalleDelServidor();
-  return base + (detalle || ' Firebase no llegó a consultar al servidor: el error salió de la '
-    + 'ventana de Google.');
+  if (e.code !== 'auth/provider-already-linked') return textoDeAcceso(e);
+
+  /* Este código no lo produce el navegador. Cuando el servidor devuelve
+     una identidad de Google distinta de la que tiene guardada para ese
+     correo, la causa es concreta y no tiene nada que ver con la sesión:
+     la cuenta de Google se rehízo —se borró y se volvió a crear, o el
+     dominio pasó a Workspace— y Google no reutiliza identificadores. El
+     correo es el mismo, la cuenta es otra, y Firebase intenta enlazarla a
+     un usuario que ya tiene un Google enlazado. Se arregla desde el
+     servidor, no pulsando otra vez, así que el mensaje lo dice. */
+  const d = (window.__authDiag || []).slice(-1)[0];
+  let cuerpo = {};
+  try { cuerpo = JSON.parse(d?.cuerpo || '{}'); } catch { /* no era JSON */ }
+  const identidad = String(cuerpo.federatedId || '').match(/(\d{10,32})/)?.[1] || '';
+  const correo = String(cuerpo.email || e.customData?.email || '').trim();
+  if (identidad) {
+    return 'Esta cuenta de Google no es la que Firebase tiene registrada para ese correo: '
+      + 'la cuenta se rehízo en algún momento y Google le dio otra identidad. No se arregla '
+      + 'desde acá ni volviendo a pulsar.\n\nEn Cloud Shell:\n'
+      + `node firebase/reparar-google.mjs --admin --correo ${correo || 'CORREO'} `
+      + `--nuevo ${identidad}\n\n${detalleDelServidor().trim()}`;
+  }
+  return textoDeAcceso(e) + (detalleDelServidor()
+    || ' Firebase no llegó a consultar al servidor: el error salió de la ventana de Google.');
 }
 
 function textoDeAcceso(e) {

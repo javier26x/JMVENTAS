@@ -401,6 +401,8 @@ select.estado { padding: 4px 8px; font-size: 13px; max-width: 145px; }
   border: 1px solid var(--critico);
   background: color-mix(in srgb, var(--critico) 8%, transparent);
   font-size: 14px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 .error a { word-break: break-all; }
 
@@ -1096,7 +1098,16 @@ button.enlace {
 .atajos-cuando .atajo:hover { border-color: var(--acento); color: var(--acento); }
 .sub.malo { color: var(--critico); }
 
-.error-texto { color: var(--critico); }
+/* Los errores de acceso pueden traer un comando que hay que copiar y la
+   respuesta cruda del servidor. Sin conservar los saltos de línea todo
+   eso queda en un párrafo corrido del que no se puede sacar nada. */
+.error-texto {
+  color: var(--critico);
+  white-space: pre-line;
+  text-align: left;
+  max-width: 62ch;
+  overflow-wrap: anywhere;
+}
 
 @media (max-width: 860px) {
   .app { grid-template-columns: 1fr; }
