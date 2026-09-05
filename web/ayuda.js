@@ -113,7 +113,11 @@ export const AYUDA = {
     + 'editados a mano nunca se sobrescriben en una recarga.'],
   'col-estado': ['Estado',
     'El punto del embudo en que está. Se cambia aquí mismo y queda guardado '
-    + 'al instante.'],
+    + 'al instante. Debajo aparece, cuando corresponde, por qué este colegio '
+    + 'no entraría en una campaña armada ahora: porque ya se le escribió hace '
+    + 'menos de 30 días, porque espera turno en una campaña programada, o '
+    + 'porque pidió la baja. Es la misma regla que aplica el envío, así que '
+    + 'lo que se ve acá es lo que va a pasar.'],
   'col-canal': ['Canal',
     'El proceso de compra al que obliga la dependencia del establecimiento. '
     + 'Determina a quién hay que convencer y en cuánto tiempo se puede firmar.'],

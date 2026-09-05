@@ -1168,6 +1168,21 @@ button.enlace {
    Eran dos columnas que dicen lo mismo salvo cuando una tanda se corta. */
 #cuerpo-campanas .num .sub { display: inline; font-size: 12px; }
 
+/* Por qué esta fila no entraría en una campaña armada ahora: ya se le
+   escribió hace poco, espera turno en una programada, o está dado de
+   baja. Va bajo el selector de estado, en pequeño: es una advertencia
+   antes de armar la tanda, no un dato de la ficha. */
+.en-campana {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--tinta-apagada);
+}
+.en-campana.espera { color: color-mix(in srgb, var(--aviso) 70%, var(--tinta)); }
+.en-campana.malo { color: var(--critico); font-weight: 550; }
+.en-campana.ok { color: var(--ok); }
+
 /* Un número que duele. Se usa suelto en la columna de rebotes y sobre
    .sub y .env en otras; la regla base cubre los tres. */
 .malo { color: var(--critico); font-weight: 550; }

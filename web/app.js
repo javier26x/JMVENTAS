@@ -83,7 +83,7 @@ const estado = {
   // RBD que pidieron la baja o rebotaron: se excluyen de todo segmento.
   bajas: new Set(),
   // RBD que ya esperan turno en una campaña programada.
-  enCola: new Set(),
+  enCola: new Map(),
   // La función de seguimiento atiende el pixel, los clics y la baja de
   // un clic; si no está desplegada, el correo sale sin esas piezas.
   funcion: false,
@@ -513,7 +513,7 @@ const FILA = {
     <td>${distintivoTier(p.tierNum)}<div class="sub">${distintivoAte(p.requiereAte)}</div></td>
     <td class="num">${numero(p.matBasica)}</td>
     <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono), p.contactoFuente)}</td>
-    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>`,
+    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}${marcaSegmento(p)}</td>`,
 
   prospectos: (p) => `
     <td>${distintivoTier(p.tierNum)}</td>
@@ -526,7 +526,7 @@ const FILA = {
     <td class="num">${numero(p.matBasica)}</td>
     <td class="num">${p.eeEnRed > 1 ? `${numero(p.eeEnRed)} EE` : '—'}</td>
     <td class="contacto">${celdaContacto(partes(p.email), partes(p.telefono), p.contactoFuente)}</td>
-    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}</td>`,
+    <td>${selectorEstado('prospectos', p.id, p.estadoCrm)}${marcaSegmento(p)}</td>`,
 
   cuentas: (c) => `
     <td><span class="prio${c.prioridad === 1 ? ' p1' : ''}">${c.prioridad ?? '—'}</span></td>
@@ -1348,6 +1348,69 @@ const DIAS_RECONTACTO = 30;
    reunión hecha o una propuesta encima de la mesa. */
 const CERRADOS = ['reunion', 'propuesta', 'ganado', 'descartado'];
 
+/* Por qué un colegio no entraría en una campaña armada ahora mismo.
+   Es la única función que lo decide: la usa el segmento para podar y la
+   tabla para marcarlo. Separadas se habrían ido cada una por su lado, y
+   entonces la lista dice una cosa y el envío hace otra.
+
+   Devuelve null si el colegio entra. La poda por casilla compartida no
+   está acá a propósito: no se puede saber mirando una fila sola, hace
+   falta el conjunto. */
+function fueraDelSegmento(p, limite) {
+  const rbd = String(p.rbd ?? p.id);
+  if (estado.bajas.has(rbd)) {
+    return { clave: 'baja', texto: 'Dado de baja', tono: 'malo' };
+  }
+  if (CERRADOS.includes(String(p.estadoCrm || ''))) {
+    return { clave: 'enCurso', texto: 'En conversación', tono: '' };
+  }
+  const enCola = estado.enCola.get?.(rbd) ?? (estado.enCola.has(rbd) || null);
+  if (enCola) {
+    return {
+      clave: 'cola',
+      texto: enCola?.cuando ? `Programada ${enCola.cuando}` : 'En campaña programada',
+      titulo: enCola?.nombre || '',
+      tono: 'espera',
+    };
+  }
+  /* La guardia de 30 días protege a una persona de recibir dos correos
+     seguidos. Si desde entonces conseguimos otra dirección —la nómina
+     oficial, el sitio del colegio—, al otro lado hay un buzón que nunca
+     ha recibido nada: excluirlo sería castigarlo por un correo que no le
+     llegó. */
+  const escrito = p.ultimoContacto?.toMillis?.() || 0;
+  if (escrito <= limite) return null;
+  const casillaAhora = mail.primerCorreo(p.email).toLowerCase();
+  const casillaAntes = String(p.ultimoCorreo || '').toLowerCase();
+  const buzonNuevo = Boolean(casillaAntes) && Boolean(casillaAhora)
+    && casillaAntes !== casillaAhora;
+  if (buzonNuevo) {
+    return {
+      clave: 'recuperado',
+      texto: `Escrito ${desdeEntonces(p.ultimoContacto)}, a otra dirección`,
+      titulo: `El correo anterior fue a ${casillaAntes}. Entra igual.`,
+      tono: 'ok',
+      entra: true,
+    };
+  }
+  return {
+    clave: 'reciente',
+    texto: `Escrito ${desdeEntonces(p.ultimoContacto)}`,
+    titulo: `No vuelve a entrar hasta pasados ${DIAS_RECONTACTO} días.`,
+    tono: 'espera',
+  };
+}
+
+/* El distintivo de la fila. Lo que se busca al mirar la lista antes de
+   armar una tanda: a quién ya se le escribió y quién está esperando en
+   una campaña que todavía no sale. */
+function marcaSegmento(p) {
+  const fuera = fueraDelSegmento(p, Date.now() - DIAS_RECONTACTO * 864e5);
+  if (!fuera || fuera.clave === 'enCurso') return '';   // el estado ya lo dice
+  return `<span class="en-campana ${esc(fuera.tono)}"${
+    fuera.titulo ? ` title="${esc(fuera.titulo)}"` : ''}>${esc(fuera.texto)}</span>`;
+}
+
 /* La selección manual gana sobre el filtro: si alguien marcó colegios
    uno por uno, eso es lo que quiere enviar, no lo que quedó en pantalla.
    Sobre eso se aplican tres podas que protegen la reputación del
@@ -1365,23 +1428,11 @@ function segmentoActual() {
   const limite = Date.now() - DIAS_RECONTACTO * 864e5;
 
   for (const p of conCorreo) {
-    if (estado.bajas.has(String(p.rbd))) { podas.baja += 1; continue; }
-    if (CERRADOS.includes(String(p.estadoCrm || ''))) { podas.enCurso += 1; continue; }
-    if (estado.enCola.has(String(p.rbd))) { podas.cola += 1; continue; }
-    /* La guardia de 30 días protege a una persona de recibir dos correos
-       seguidos. Si desde entonces conseguimos otra dirección —la nómina
-       oficial, el sitio del colegio—, al otro lado hay un buzón que nunca
-       ha recibido nada: excluirlo sería castigarlo por un correo que no
-       le llegó. */
-    const casillaAhora = mail.primerCorreo(p.email).toLowerCase();
-    const casillaAntes = String(p.ultimoCorreo || '').toLowerCase();
-    const buzonNuevo = Boolean(casillaAntes) && Boolean(casillaAhora)
-      && casillaAntes !== casillaAhora;
-    if (!buzonNuevo && (p.ultimoContacto?.toMillis?.() || 0) > limite) {
-      podas.reciente += 1;
-      continue;
+    const fuera = fueraDelSegmento(p, limite);
+    if (fuera) {
+      podas[fuera.clave] += 1;
+      if (!fuera.entra) continue;   // "recuperado" se cuenta pero entra
     }
-    if (buzonNuevo && (p.ultimoContacto?.toMillis?.() || 0) > limite) podas.recuperado += 1;
 
     const casilla = mail.primerCorreo(p.email).toLowerCase();
     const previo = porCasilla.get(casilla);
@@ -1403,13 +1454,19 @@ function segmentoActual() {
    que sin esta lista una campaña armada el domingo con los mismos
    filtros volvería a incluirlos, y el lunes recibirían dos correos en
    frío con horas de diferencia. */
+/* Un Map y no un Set: además de saber que espera turno, la fila dice en
+   qué campaña y para cuándo, que es lo que decide si conviene esperar o
+   sacarlo de ahí. */
 async function cargarEnCola() {
-  const cola = new Set();
+  const cola = new Map();
   try {
     if (!estado.campanas.length) estado.campanas = await mail.listarCampanas(db);
     for (const c of estado.campanas.filter((x) => x.estado === 'programada')) {
+      /* Sólo el día: la hora exacta está en la vista de campañas, y acá
+         va bajo un selector, donde una línea de más parte el texto en dos. */
+      const cuando = (c.programadaPara ? cuandoSale(c.programadaPara) : '').split(' · ')[0];
       for (const d of await mail.listarDestinatarios(db, c.id, true)) {
-        cola.add(String(d.rbd ?? d.id));
+        cola.set(String(d.rbd ?? d.id), { nombre: c.nombre || '', cuando });
       }
     }
   } catch { /* si falla, la guardia de 30 días sigue en pie */ }
@@ -3659,6 +3716,11 @@ onAuthStateChanged(auth, async (u) => {
     await cargarProspectos();
     poblarFiltros();
     await pintarCampanas();
+    /* Quién espera turno en una campaña programada se marca en la lista,
+       así que hay que saberlo al entrar y no sólo al abrir el editor. Va
+       después de pintar: son una lectura por destinatario en cola y la
+       tabla no tiene por qué esperarlas. */
+    cargarEnCola().then(() => pintar()).catch(() => {});
     await comprobarSeguimiento();
     conectarSolo();
     contarHoy();
